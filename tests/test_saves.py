@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import collections
 import json
 from pathlib import Path
 
@@ -464,3 +465,71 @@ def test_unedited_trainer_block_changes_nothing(real_saves: list[Path]) -> None:
         assert rebuilt.to_bytes() == original, type(sav).__name__
         checked += 1
     assert checked >= 6, f"only {checked} generations were exercised"
+
+
+def test_extra_slots_hold_real_pokemon(real_saves: list[Path]) -> None:
+    """The daycare and its neighbours are ordinary Pokemon the games keep
+    outside the party and boxes, so a reader that only walks those two misses
+    them entirely."""
+    found: dict[str, int] = collections.defaultdict(int)
+    for path in real_saves:
+        try:
+            sav = saves.from_bytes(path.read_bytes())
+        except saves.SaveFormatError:
+            continue
+        for slot, entity in sav.iter_extra():
+            # Several of these regions double as scratch space, so anything
+            # reported must survive its own checksum and name a real species.
+            assert entity.species_name is not None, f"{path.name} {slot.name}"
+            assert entity.checksum_valid, f"{path.name} {slot.name}"
+            found[slot.kind] += 1
+    assert sum(found.values()) >= 40, f"only found {dict(found)}"
+    assert found["daycare"] >= 25, f"daycare is the universal one: {dict(found)}"
+
+
+def test_extra_slots_survive_a_round_trip(real_saves: list[Path]) -> None:
+    checked = 0
+    for path in real_saves:
+        try:
+            sav = saves.from_bytes(path.read_bytes())
+        except saves.SaveFormatError:
+            continue
+        before = [(s.kind, s.index, e.species) for s, e in sav.iter_extra()]
+        if not before:
+            continue
+        original = bytes(sav.to_bytes())
+        document = sav.to_dict(include_raw=True)
+        assert len(document["extra"]) == len(before)
+        rebuilt = saves.from_bytes(base64.b64decode(document["raw_base64"]))
+        rebuilt.apply_dict(document)
+        assert rebuilt.to_bytes() == original, path.name
+        assert [(s.kind, s.index, e.species)
+                for s, e in rebuilt.iter_extra()] == before
+        checked += 1
+    assert checked >= 15, f"only {checked} saves carried extra Pokemon"
+
+
+def test_extra_slots_are_writable(real_saves: list[Path]) -> None:
+    checked = 0
+    for path in real_saves:
+        try:
+            sav = saves.from_bytes(path.read_bytes())
+        except saves.SaveFormatError:
+            continue
+        extra = list(sav.iter_extra())
+        if not extra:
+            continue
+        slot, entity = extra[0]
+        entity.evs = (252, 0, 0, 0, 0, 0)
+        sav.set_extra_slot(slot.kind, slot.index, entity)
+        reloaded = saves.from_bytes(sav.to_bytes())
+        assert reloaded.get_extra_slot(slot.kind, slot.index).evs[0] == 252
+        assert reloaded.checksums_valid
+        checked += 1
+    assert checked >= 15, f"only {checked} saves carried extra Pokemon"
+
+
+def test_unknown_extra_slot_is_rejected(real_saves: list[Path]) -> None:
+    sav = _one_per_generation(real_saves)[0]
+    with pytest.raises(KeyError):
+        sav.get_extra_slot("nonsense", 0)

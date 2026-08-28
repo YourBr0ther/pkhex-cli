@@ -7,11 +7,13 @@ file rather than at the end.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import hashlib
 
 from ..binio import read_u16, read_u32, write_u16, write_u32
 from ..pkm.formats import PB8
-from .base import SaveFile
+from .base import ExtraSlot, SaveFile
 
 #: The four shipped save sizes, one per game revision.
 SIZES = (0xE9828, 0xEDC20, 0xEED8C, 0xEF0A4)
@@ -54,6 +56,24 @@ class SAV8BS(SaveFile):
     BOX_NAME_LENGTH = 0x22
     CONFIG_BASE = 0x79B74
     STATUS_BASE = 0x79BB4
+    #: Daycare, then the Grand Underground's cache of encountered Pokemon.
+    DAYCARE_BASE = 0x96080
+    UNDERGROUND_BASE = 0x9A89C
+    UNDERGROUND_SLOT_OFFSET = 0x4C
+    UNDERGROUND_COUNT = 15
+
+    EXTRA_SLOTS: ClassVar[tuple[ExtraSlot, ...]] = (
+        ExtraSlot("daycare", 0, True), ExtraSlot("daycare", 1, True),
+        *(ExtraSlot("underground", i, True) for i in range(UNDERGROUND_COUNT)),
+    )
+
+    def _extra_region(self, slot: ExtraSlot) -> tuple[bytearray, int, int]:
+        if slot.kind == "underground":
+            start = (self.UNDERGROUND_BASE + self.UNDERGROUND_SLOT_OFFSET
+                     + slot.index * self.SIZE_PARTY_SLOT)
+        else:
+            start = self.DAYCARE_BASE + slot.index * self.SIZE_PARTY_SLOT
+        return self.data, start, self.SIZE_BOXSLOT
     PLAY_TIME_BASE = 0x79C04
 
     # --- storage -------------------------------------------------------------

@@ -8,14 +8,17 @@ checksum and a mirrored copy of that checksum near the end of the file.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 import json
 from functools import lru_cache
 
+from .. import crypto
 from ..binio import read_u16, read_u32, write_u16, write_u32
 from ..data import DATA_DIR
 from ..pkm.formats import PK4, PK5
 from . import checksums
-from .base import SaveFile
+from .base import ExtraSlot, SaveFile
 
 SIZE_G4RAW = 0x80000
 SIZE_G5RAW = 0x80000
@@ -137,6 +140,30 @@ class SAV4(SaveFile):
 
     # --- trainer -------------------------------------------------------------
 
+    #: Daycare, in the general block. Each slot is padded to party size, with
+    #: the experience earned while deposited in the last four bytes.
+    DAYCARE_OFFSET: int | None = None
+    DAYCARE_SLOT_SIZE = crypto.SIZE_4PARTY
+    #: HG/SS only: the Pokemon walking in a Pokewalker.
+    WALKER_OFFSET: int | None = None
+
+    def extra_slots(self) -> tuple[ExtraSlot, ...]:
+        slots: list[ExtraSlot] = []
+        if self.DAYCARE_OFFSET is not None:
+            slots += [ExtraSlot("daycare", 0), ExtraSlot("daycare", 1)]
+        if self.WALKER_OFFSET is not None:
+            slots.append(ExtraSlot("pokewalker", 0))
+        return tuple(slots)
+
+    def _extra_region(self, slot: ExtraSlot) -> tuple[bytearray, int, int]:
+        if slot.kind == "pokewalker":
+            assert self.WALKER_OFFSET is not None
+            start = self.WALKER_OFFSET
+        else:
+            assert self.DAYCARE_OFFSET is not None
+            start = self.DAYCARE_OFFSET + slot.index * self.DAYCARE_SLOT_SIZE
+        return self.data, self.general_base + start, crypto.SIZE_4STORED
+
     def _general_u16(self, offset: int) -> int:
         return read_u16(self.data, self.general_base + offset)
 
@@ -230,6 +257,7 @@ class SAV4DP(SAV4):
     STORAGE_START = 0xC100
     TRAINER_OFFSET = 0x64
     PARTY_OFFSET = 0x98
+    DAYCARE_OFFSET = 0x141C
 
 
 class SAV4Pt(SAV4):
@@ -240,6 +268,7 @@ class SAV4Pt(SAV4):
     STORAGE_START = 0xCF2C
     TRAINER_OFFSET = 0x68
     PARTY_OFFSET = 0xA0
+    DAYCARE_OFFSET = 0x1654
 
 
 class SAV4HGSS(SAV4):
@@ -252,6 +281,8 @@ class SAV4HGSS(SAV4):
     FOOTER_SIZE = 0x10
     TRAINER_OFFSET = 0x64
     PARTY_OFFSET = 0x98
+    DAYCARE_OFFSET = 0x15FC
+    WALKER_OFFSET = 0xE5E0
     BOX_START = 0
     BOX_STRIDE = 0x1000
 
@@ -306,6 +337,26 @@ class SAV5(SaveFile):
 
     def _set_party_count(self, count: int) -> None:
         self.data[self.PARTY_BASE + 4] = count
+
+    #: Block holding the six Battle Box slots, each a plain stored record.
+    BATTLE_BOX_BLOCK = 49
+    #: Block holding the daycare. Each slot is an occupied flag, a party-sized
+    #: record, and the experience earned while deposited.
+    DAYCARE_BLOCK = 50
+    DAYCARE_SLOT_SIZE = 4 + crypto.SIZE_5PARTY + 4
+
+    EXTRA_SLOTS: ClassVar[tuple[ExtraSlot, ...]] = (
+        ExtraSlot("daycare", 0), ExtraSlot("daycare", 1),
+        *(ExtraSlot("battle_box", i) for i in range(6)),
+    )
+
+    def _extra_region(self, slot: ExtraSlot) -> tuple[bytearray, int, int]:
+        if slot.kind == "battle_box":
+            start = self.blocks[self.BATTLE_BOX_BLOCK]["offset"]
+            return self.data, start + slot.index * crypto.SIZE_5STORED, crypto.SIZE_5STORED
+        start = self.blocks[self.DAYCARE_BLOCK]["offset"]
+        offset = start + slot.index * self.DAYCARE_SLOT_SIZE + 4
+        return self.data, offset, crypto.SIZE_5STORED
 
     # --- trainer -------------------------------------------------------------
 

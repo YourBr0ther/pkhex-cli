@@ -8,10 +8,13 @@ whichever copy saved most recently.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
+from .. import crypto
 from ..binio import read_i16, read_u16, read_u32, write_u16, write_u32
 from ..pkm.formats import PK3
 from . import checksums
-from .base import SaveFile
+from .base import ExtraSlot, SaveFile
 
 SIZE_SECTOR = 0x1000
 SIZE_SECTOR_USED = 0xF80
@@ -104,6 +107,22 @@ class SAV3(SaveFile):
     MAX_STRING_LENGTH_TRAINER = 7
 
     #: Offset of the party inside the large buffer, per game.
+    #: Daycare, in the large block. Emerald and FireRed pad each slot with the
+    #: held mail and the experience earned while deposited.
+    DAYCARE_OFFSET: int | None = None
+    DAYCARE_SLOT_SIZE: int = crypto.SIZE_3STORED + 0x3C
+    EXTRA_SLOTS: ClassVar[tuple[ExtraSlot, ...]] = (
+        ExtraSlot("daycare", 0), ExtraSlot("daycare", 1),
+    )
+
+    def extra_slots(self) -> tuple[ExtraSlot, ...]:
+        return self.EXTRA_SLOTS if self.DAYCARE_OFFSET is not None else ()
+
+    def _extra_region(self, slot: ExtraSlot) -> tuple[bytearray, int, int]:
+        assert self.DAYCARE_OFFSET is not None
+        offset = self.DAYCARE_OFFSET + slot.index * self.DAYCARE_SLOT_SIZE
+        return self.large, offset, crypto.SIZE_3STORED
+
     PARTY_COUNT_OFFSET: int = 0x234
     PARTY_OFFSET: int = 0x238
     MONEY_OFFSET: int = 0x0490
@@ -304,12 +323,16 @@ class SAV3(SaveFile):
 class SAV3RS(SAV3):
     KEY = "rs"
     GAME = "Ruby/Sapphire"
+    #: Ruby and Sapphire keep daycare mail elsewhere, so a slot is just the record.
+    DAYCARE_OFFSET = 0x2F9C
+    DAYCARE_SLOT_SIZE = crypto.SIZE_3STORED
 
 
 class SAV3E(SAV3):
     KEY = "e"
     GAME = "Emerald"
     SECURITY_KEY_OFFSET = 0x0AC
+    DAYCARE_OFFSET = 0x3030
 
 
 class SAV3FRLG(SAV3):
@@ -319,6 +342,7 @@ class SAV3FRLG(SAV3):
     PARTY_OFFSET = 0x038
     MONEY_OFFSET = 0x0290
     SECURITY_KEY_OFFSET = 0xF20
+    DAYCARE_OFFSET = 0x2F80
 
 
 BY_VERSION = {"rs": SAV3RS, "e": SAV3E, "frlg": SAV3FRLG}

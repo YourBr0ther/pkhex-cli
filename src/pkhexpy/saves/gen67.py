@@ -11,11 +11,12 @@ from __future__ import annotations
 import json
 from functools import lru_cache
 
+from .. import crypto
 from ..binio import read_u16, read_u32, write_u16, write_u32
 from ..data import DATA_DIR
 from ..pkm.formats import PB7, PK6, PK7
 from . import checksums
-from .base import SaveFile
+from .base import ExtraSlot, SaveFile
 
 #: Offset of the block-info table within the metadata chunk.
 BLOCK_TABLE_OFFSET = 0x14
@@ -73,6 +74,46 @@ class SAV67(SaveFile):
         self.checksum_name = table["checksum"]
 
     # --- block plumbing ------------------------------------------------------
+
+    #: Blocks holding Pokemon outside the party and boxes. Gen6 and Gen7 lay
+    #: out the daycare differently: Gen6 prefixes each slot with an occupied
+    #: flag and the experience earned, Gen7 with a single flag byte.
+    DAYCARE_BLOCK: int | None = None
+    DAYCARE_SLOT_COUNT: int = 2
+    DAYCARE_SLOT_SIZE: int = 4 + crypto.SIZE_6STORED + 4
+    DAYCARE_RECORD_OFFSET: int = 8
+    BATTLE_BOX_BLOCK: int | None = None
+    #: Kyurem's other half, and in Ultra Sun/Moon the two Necrozma fusions.
+    FUSED_BLOCK: int | None = None
+    FUSED_COUNT: int = 1
+    FUSED_PARTY_SIZED: bool = False
+
+    def extra_slots(self) -> tuple[ExtraSlot, ...]:
+        slots: list[ExtraSlot] = []
+        if self.DAYCARE_BLOCK is not None:
+            slots += [ExtraSlot("daycare", i)
+                      for i in range(self.DAYCARE_SLOT_COUNT)]
+        if self.FUSED_BLOCK is not None:
+            slots += [ExtraSlot("fused", i, self.FUSED_PARTY_SIZED)
+                      for i in range(self.FUSED_COUNT)]
+        if self.BATTLE_BOX_BLOCK is not None:
+            slots += [ExtraSlot("battle_box", i) for i in range(6)]
+        return tuple(slots)
+
+    def _extra_region(self, slot: ExtraSlot) -> tuple[bytearray, int, int]:
+        if slot.kind == "daycare":
+            assert self.DAYCARE_BLOCK is not None
+            start = self.block_offset(self.DAYCARE_BLOCK)
+            offset = start + slot.index * self.DAYCARE_SLOT_SIZE
+            return self.data, offset + self.DAYCARE_RECORD_OFFSET, crypto.SIZE_6STORED
+        if slot.kind == "fused":
+            assert self.FUSED_BLOCK is not None
+            size = crypto.SIZE_6PARTY if slot.party_format else crypto.SIZE_6STORED
+            start = self.block_offset(self.FUSED_BLOCK)
+            return self.data, start + slot.index * size, crypto.SIZE_6STORED
+        assert self.BATTLE_BOX_BLOCK is not None
+        start = self.block_offset(self.BATTLE_BOX_BLOCK)
+        return self.data, start + slot.index * crypto.SIZE_6STORED, crypto.SIZE_6STORED
 
     def block_offset(self, index: int) -> int:
         return self.blocks[index]["offset"]
@@ -230,6 +271,9 @@ class SAV6XY(SAV67):
     MISC_BLOCK = 11
     MISC_MONEY_OFFSET = 0x8
     BOX_LAYOUT_BLOCK = 12
+    BATTLE_BOX_BLOCK = 13
+    FUSED_BLOCK = 22
+    DAYCARE_BLOCK = 38
     PARTY_FIXED_OFFSET = 0x14200
     BOX_FIXED_OFFSET = 0x22600
 
@@ -249,6 +293,9 @@ class SAV6AO(SAV67):
     MISC_BLOCK = 11
     MISC_MONEY_OFFSET = 0x8
     BOX_LAYOUT_BLOCK = 12
+    BATTLE_BOX_BLOCK = 13
+    FUSED_BLOCK = 22
+    DAYCARE_BLOCK = 38
     PARTY_FIXED_OFFSET = 0x14200
     BOX_FIXED_OFFSET = 0x33000
 
@@ -272,12 +319,20 @@ class SAV7SM(SAV67):
     BOX_BLOCK = 14
     BOX_LAYOUT_BLOCK = 13
     SIGNATURE_BLOCK = 36
+    # Gen7 dropped the per-slot experience counter, leaving one flag byte.
+    DAYCARE_BLOCK = 33
+    DAYCARE_SLOT_SIZE = crypto.SIZE_6STORED + 1
+    DAYCARE_RECORD_OFFSET = 1
+    FUSED_BLOCK = 8
+    FUSED_PARTY_SIZED = True
 
 
 class SAV7USUM(SAV7SM):
     KEY = "usum"
     GAME = "Ultra Sun/Ultra Moon"
     BLOCK_TABLE = "usum"
+    #: Kyurem, then Necrozma fused with Solgaleo and with Lunala.
+    FUSED_COUNT = 3
 
 
 class SAV7b(SAV67):
@@ -291,6 +346,11 @@ class SAV7b(SAV67):
     BOX_COUNT = 40
     BOX_SLOT_COUNT = 25
     SIZE_BOXSLOT = 0x104
+    #: One Pokemon left with the daycare lady, eight bytes into its block.
+    DAYCARE_BLOCK = 13
+    DAYCARE_SLOT_COUNT = 1
+    DAYCARE_SLOT_SIZE = 0
+    DAYCARE_RECORD_OFFSET = 8
     SIZE_PARTY_SLOT = 0x104
     BLOCK_TABLE = "gg"
     STATUS_BLOCK = 2

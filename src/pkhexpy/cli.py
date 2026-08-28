@@ -157,6 +157,13 @@ def _show_save(sav) -> int:
     for box in sorted(counts):
         name = sav.box_name(box) or f"Box {box + 1}"
         print(f"  {name}: {counts[box]}")
+
+    extra = list(sav.iter_extra())
+    if extra:
+        print(f"\nElsewhere ({len(extra)})")
+        for slot, pk in extra:
+            print(f"  {slot.kind} {slot.index + 1}: {pk.species_name} "
+                  f"lv{pk.current_level}")
     return 0
 
 
@@ -204,6 +211,9 @@ def cmd_boxes(args: argparse.Namespace) -> int:
         label = sav.box_name(box) or f"box {box + 1}"
         print(f"{label} {slot + 1:<3} {pk.species_name:<14} lv{pk.current_level:<4}"
               f"{pk.nickname}")
+    for extra, pk in sav.iter_extra():
+        print(f"{extra.kind} {extra.index + 1:<3} {pk.species_name:<14} "
+              f"lv{pk.current_level:<4}{pk.nickname}")
     return 0
 
 

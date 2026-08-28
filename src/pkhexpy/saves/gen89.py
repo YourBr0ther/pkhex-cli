@@ -7,10 +7,12 @@ holds the boxes differs per game, so each class names the keys it needs.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from ..binio import read_u16, read_u32, write_u16, write_u32
 from ..pkm.formats import PA8, PA9, PK8, PK9
 from . import swish
-from .base import SaveFile
+from .base import ExtraSlot, SaveFile
 from .swish import SCBlock
 
 
@@ -104,6 +106,23 @@ class SAV89(SaveFile):
             raise NotImplementedError(
                 f"{self.GAME} has no party count byte to update")
         data[index] = count
+
+    #: Blocks holding Pokemon outside the party and boxes, keyed by block id.
+    #: EXTRA_BLOCKS maps a slot kind to (key, count, stride, record offset).
+    EXTRA_BLOCKS: ClassVar[dict[str, tuple[int, int, int, int]]] = {}
+
+    def extra_slots(self) -> tuple[ExtraSlot, ...]:
+        slots: list[ExtraSlot] = []
+        for kind, (key, count, _stride, _start) in self.EXTRA_BLOCKS.items():
+            if self.block(key) is None:
+                continue
+            slots += [ExtraSlot(kind, i, True) for i in range(count)]
+        return tuple(slots)
+
+    def _extra_region(self, slot: ExtraSlot) -> tuple[bytearray, int, int]:
+        key, _count, stride, start = self.EXTRA_BLOCKS[slot.kind]
+        data = self.block_data(key)
+        return data, start + slot.index * stride, self.SIZE_BOXSLOT
 
     def _read_from(self, buffer: bytearray, offset: int, size: int):
         raw = bytes(buffer[offset:offset + size])
@@ -262,6 +281,15 @@ class SAV8SWSH(SAV89):
     STATUS_GENDER_OFFSET = 0xA5
     STATUS_LANGUAGE_OFFSET = 0xA7
     STATUS_OT_OFFSET = 0xB0
+    #: Kyurem and the two Necrozma fusions share one block; Calyrex, added by
+    #: the Crown Tundra, has its own. Each daycare struct is a flag byte then
+    #: the record, and there are two daycares of two slots each.
+    EXTRA_BLOCKS: ClassVar[dict[str, tuple[int, int, int, int]]] = {
+        "fused": (0xC0DE5C5F, 3, 0x158, 0),
+        "fused_calyrex": (0xC37F267B, 1, 0x158, 0),
+        "daycare": (0x2D6FBA6A, 2, 1 + 0x148, 1),
+        "daycare2": (0x2D6FBA6A, 2, 1 + 0x148, 1 + 2 * (1 + 0x148) + 0x26),
+    }
 
 
 class SAV8LA(SAV89):
@@ -300,6 +328,16 @@ class SAV9SV(SAV89):
     KEY_PLAY_TIME = 0xEDAFF794
     KEY_MONEY = 0x4F35D0DD
     PLAY_TIME_WIDE = True
+    #: Each fusion gets its own block. Surprise Trade keeps two records: the
+    #: one uploaded and the one received.
+    EXTRA_BLOCKS: ClassVar[dict[str, tuple[int, int, int, int]]] = {
+        "fused_calyrex": (0x916BCA9E, 1, 0x158, 0),
+        "fused_kyurem": (0x7E0ADF89, 1, 0x158, 0),
+        "fused_necrozma_solgaleo": (0x203FF693, 1, 0x158, 0),
+        "fused_necrozma_lunala": (0x5369FC39, 1, 0x158, 0),
+        "surprise_trade_sent": (0xB2FDF384, 1, 0x158, 0x198),
+        "surprise_trade_received": (0xB2FDF384, 1, 0x158, 0x02C),
+    }
 
 
 class SAV9ZA(SAV9SV):
