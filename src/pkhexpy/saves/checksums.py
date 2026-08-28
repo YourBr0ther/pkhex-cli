@@ -7,9 +7,6 @@ GameCube titles use big-endian sums.
 
 from __future__ import annotations
 
-import zlib
-
-
 def crc16_ccitt(data: bytes) -> int:
     """Bitwise CRC-16-CCITT, as Gen4/5 and Gen6 blocks use."""
     top = 0xFF
@@ -53,10 +50,6 @@ def crc16_noinvert(data: bytes) -> int:
     return _crc16(data, 0)
 
 
-def crc32_invert(data: bytes) -> int:
-    return zlib.crc32(data) & 0xFFFFFFFF
-
-
 def checksum32(data: bytes, initial: int = 0) -> int:
     """Sum of 32-bit little-endian words, folded to 16 bits (Gen3 sectors)."""
     checksum = initial
@@ -65,26 +58,10 @@ def checksum32(data: bytes, initial: int = 0) -> int:
     return (checksum + (checksum >> 16)) & 0xFFFF
 
 
-def checksum16(data: bytes, initial: int = 0) -> int:
-    """Sum of bytes (Stadium saves)."""
-    return (initial + sum(data)) & 0xFFFF
-
-
 def add16(data: bytes) -> int:
     """Sum of 16-bit little-endian words."""
     return sum(int.from_bytes(data[i:i + 2], "little")
                for i in range(0, len(data) - 1, 2)) & 0xFFFF
-
-
-def add16_big_endian(data: bytes) -> int:
-    return sum(int.from_bytes(data[i:i + 2], "big")
-               for i in range(0, len(data) - 1, 2)) & 0xFFFF
-
-
-def checksum16_big_invert(data: bytes) -> int:
-    """R/S Box packs the sum and its complement into one 32-bit value."""
-    checksum = add16_big_endian(data)
-    return ((checksum << 16) | ((0xF004 - checksum) & 0xFFFF)) & 0xFFFFFFFF
 
 
 ALGORITHMS = {

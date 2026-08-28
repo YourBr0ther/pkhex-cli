@@ -78,6 +78,29 @@ class SAV4(SaveFile):
     #: chunk out to 0x1000.
     BOX_STRIDE: int = 30 * 136
 
+    #: Offset of the daycare inside the general block. Two slots, spaced a
+    #: party-sized record apart, of which only the stored part is the record;
+    #: the tail of each holds the experience earned while deposited.
+    DAYCARE_OFFSET: int | None = None
+    #: HG/SS parks the Pokemon out on a Pokewalker course here. It lives
+    #: nowhere else in the save, so a walk in progress is lost without it.
+    WALKER_OFFSET: int | None = None
+
+    def extra_regions(self) -> tuple[ExtraRegion, ...]:
+        regions: list[ExtraRegion] = []
+        if self.DAYCARE_OFFSET is not None:
+            regions.append(ExtraRegion(
+                "daycare", 2, crypto.SIZE_4PARTY, self.DAYCARE_OFFSET,
+                size=crypto.SIZE_4STORED))
+        if self.WALKER_OFFSET is not None:
+            regions.append(ExtraRegion(
+                "pokewalker", 1, 0, self.WALKER_OFFSET,
+                size=crypto.SIZE_4STORED))
+        return tuple(regions)
+
+    def _extra_base(self, region: ExtraRegion) -> tuple[bytearray, int]:
+        return self.data, self.general_base
+
     def __init__(self, data: bytes | bytearray) -> None:
         super().__init__(data)
         self.general_base = self._active_base(0, self.GENERAL_SIZE)
@@ -87,16 +110,6 @@ class SAV4(SaveFile):
         footer = start + length - 0x14
         newest = compare_footers(bytes(self.data), footer, footer + PARTITION_SIZE)
         return (0 if newest == 0 else PARTITION_SIZE) + start
-
-    # --- block slices --------------------------------------------------------
-
-    @property
-    def general(self) -> memoryview:
-        return memoryview(self.data)[self.general_base:self.general_base + self.GENERAL_SIZE]
-
-    @property
-    def storage(self) -> memoryview:
-        return memoryview(self.data)[self.storage_base:self.storage_base + self.STORAGE_SIZE]
 
     # --- storage -------------------------------------------------------------
 
@@ -134,6 +147,21 @@ class SAV4(SaveFile):
             entity, self.SIZE_PARTY_SLOT)
 
     # --- trainer -------------------------------------------------------------
+
+    #: Box names live in the storage block past the box data, forty bytes for
+    #: twenty UTF-16 characters. Sinnoh puts them straight after the boxes;
+    #: HG/SS leaves a gap, so each game names its own offset.
+    BOX_NAME_OFFSET: int | None = None
+    BOX_NAME_LENGTH = 40
+
+    def box_name(self, box: int) -> str | None:
+        if self.BOX_NAME_OFFSET is None:
+            return None
+        self._check_index("box", box, self.BOX_COUNT)
+        start = (self.storage_base + self.BOX_NAME_OFFSET
+                 + box * self.BOX_NAME_LENGTH)
+        raw = bytes(self.data[start:start + self.BOX_NAME_LENGTH])
+        return self.decode_string(raw) or None
 
     def region(self, name: str) -> tuple[bytearray, int]:
         if name == "trainer":
@@ -195,6 +223,8 @@ class SAV4DP(SAV4):
     TRAINER_OFFSET = 0x64
     PARTY_OFFSET = 0x98
     DAYCARE_OFFSET = 0x141C
+    #: Straight after eighteen boxes of thirty 136-byte slots.
+    BOX_NAME_OFFSET = 4 + 18 * (30 * 136)
 
 
 class SAV4Pt(SAV4):
@@ -206,6 +236,8 @@ class SAV4Pt(SAV4):
     TRAINER_OFFSET = 0x68
     PARTY_OFFSET = 0xA0
     DAYCARE_OFFSET = 0x1654
+    #: Straight after eighteen boxes of thirty 136-byte slots.
+    BOX_NAME_OFFSET = 4 + 18 * (30 * 136)
 
 
 class SAV4HGSS(SAV4):
@@ -222,6 +254,8 @@ class SAV4HGSS(SAV4):
     WALKER_OFFSET = 0xE5E0
     BOX_START = 0
     BOX_STRIDE = 0x1000
+    #: Past the padded boxes, the current-box index and a counter.
+    BOX_NAME_OFFSET = 0x12008
 
 
 # --------------------------------------------------------------------------
@@ -274,6 +308,20 @@ class SAV5(SaveFile):
 
     def _set_party_count(self, count: int) -> None:
         self.data[self.PARTY_BASE + 4] = count
+
+    #: The box-layout block sits at offset 0, just before the boxes. Each entry
+    #: is a wallpaper byte's worth of header then the name.
+    BOX_LAYOUT_BLOCK = 0
+    BOX_NAME_STRIDE = 0x28
+    BOX_NAME_START = 4
+    BOX_NAME_LENGTH = 0x14
+
+    def box_name(self, box: int) -> str | None:
+        self._check_index("box", box, self.BOX_COUNT)
+        start = (self.blocks[self.BOX_LAYOUT_BLOCK]["offset"]
+                 + self.BOX_NAME_START + box * self.BOX_NAME_STRIDE)
+        raw = bytes(self.data[start:start + self.BOX_NAME_LENGTH])
+        return self.decode_string(raw) or None
 
     #: Block holding the six Battle Box slots, each a plain stored record.
     BATTLE_BOX_BLOCK = 49

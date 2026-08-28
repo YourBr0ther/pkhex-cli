@@ -81,11 +81,9 @@ def _register_sizes() -> None:
         KNOWN_SIZES[size] = "Legends: Z-A"
     for size in SIZE_G9SV_EXACT:
         KNOWN_SIZES[size] = "Scarlet/Violet"
-    # Formats PKHeX reads that this port does not. Naming them tells a caller
-    # their file is fine and simply out of scope, rather than unrecognizable.
-    # Sizes already claimed by a supported game are left alone: Stadium shares
-    # one with Gen3, and the Japanese Stadium shares one with Gen1.
-
+    # UNSUPPORTED_SIZES stays out of this table on purpose. A size a supported
+    # game already claims keeps that game's message, and detect() adds the
+    # out-of-scope one after it rather than in place of it.
 
 
 #: Emulators append their real-time-clock state after a Game Boy or GBA save.

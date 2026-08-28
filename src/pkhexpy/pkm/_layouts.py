@@ -420,6 +420,8 @@ class SK2Layout(GBPKMLayout):
     held_mail_id = U8(0x1F, pkhex_name="HeldMailID")
     pokerus_state = U8(0x20, pkhex_name="PokerusState")
     caught_data = U16BE(0x21, pkhex_name="CaughtData")
+    nickname_trash = Span(0x24, 12, pkhex_name="NicknameTrash", readonly=True)
+    original_trainer_trash = Span(0x30, 12, pkhex_name="OriginalTrainerTrash", readonly=True)
     pokerus_days = PackedBits(0x20, 0, 0xF, 1, pkhex_name="PokerusDays")
     pokerus_strain = PackedBits(0x20, 4, 0xF, 1, pkhex_name="PokerusStrain")
     met_time_of_day = PackedBits(0x21, 14, 0x3, 2, pkhex_name="MetTimeOfDay")

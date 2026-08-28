@@ -49,3 +49,23 @@ def test_known_encodings() -> None:
     assert tables.G1_EN[0x80] == "A"
     assert tables.G3_EN[0xBB] == "A"
     assert tables.G4_INT[0x121] == "0"
+
+
+def test_gen2_ligatures_expand_to_the_two_characters_they_stand_for() -> None:
+    """One byte in a Gen2 box name can mean an apostrophe plus a letter. Only
+    box names and mail use them, which is why the entity decoder leaves them."""
+    from pkhexpy.strings.gen12 import inflate_ligatures
+
+    # Index 4 is 's in English and 's in French, the one French entry that
+    # takes the apostrophe first.
+    assert inflate_ligatures("MOM４", 2) == "MOM’s"
+    assert inflate_ligatures("MOM８", 3) == "MOM’s"
+    # Everything else in French and German puts the apostrophe last, and the
+    # two languages carry different letters at the same index.
+    assert inflate_ligatures("０", 3) == "c’"
+    assert inflate_ligatures("０", 2) == "’d"
+    # Japanese and Korean have none.
+    assert inflate_ligatures("MOM４", 1) == "MOM４"
+    assert inflate_ligatures("MOM４", 8) == "MOM４"
+    # A character that is not a ligature code passes through untouched.
+    assert inflate_ligatures("BEST {}", 2) == "BEST {}"

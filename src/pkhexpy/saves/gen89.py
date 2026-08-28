@@ -309,6 +309,14 @@ class SAV9SV(SAV89):
 
 
 class SAV9ZA(SAV9SV):
+    """Legends: Z-A.
+
+    Shares Scarlet/Violet's block keys but not its storage geometry: every slot
+    is padded past the record it holds, the party count is found by scanning
+    rather than stored, and the file carries no checksums beyond the whole-file
+    hash that SwishCrypto already covers.
+    """
+
     #: Z-A keeps far more Pokemon outside its boxes than any earlier game: a
     #: cache of shiny encounters and a long list of staged event gifts. Each
     #: record sits eight bytes into its slot, behind a hash.
@@ -324,14 +332,6 @@ class SAV9ZA(SAV9SV):
         ExtraRegion("fused_calyrex", 1, 0x158, party_format=True,
                     source=0x916BCA9E),
     )
-
-    """Legends: Z-A.
-
-    Shares Scarlet/Violet's block keys but not its storage geometry: every slot
-    is padded past the record it holds, the party count is found by scanning
-    rather than stored, and the file carries no checksums beyond the whole-file
-    hash that SwishCrypto already covers.
-    """
 
     KEY = "za"
     GAME = "Legends: Z-A"

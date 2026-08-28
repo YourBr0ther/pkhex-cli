@@ -94,12 +94,16 @@ class SAV8BS(SaveFile):
 
     # --- trainer -------------------------------------------------------------
 
-    REGIONS: ClassVar[dict[str, str]] = {
+    #: Region name to the class attribute holding its base offset. The version
+    #: byte sits at the very start of the file, so "file" has no base to name.
+    REGIONS: ClassVar[dict[str, str | None]] = {
         "status": "STATUS_BASE", "config": "CONFIG_BASE",
         "playtime": "PLAY_TIME_BASE", "file": None,
     }
 
     def region(self, name: str) -> tuple[bytearray, int]:
+        if name not in self.REGIONS:
+            raise KeyError(f"{self.GAME} has no {name!r} region")
         attr = self.REGIONS[name]
         return self.data, getattr(self, attr) if attr else 0
 

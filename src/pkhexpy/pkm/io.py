@@ -109,6 +109,15 @@ def _detect_67(raw: bytes) -> type:
 
 GAME_VERSION_ZA = 53
 
+#: Mega Stones and the two Primal Orbs. Legends Z-A brought Mega Evolution back
+#: and Scarlet/Violet has none of these items, so holding one settles a record
+#: that is otherwise ambiguous. From ``ItemStorage9ZA.MegaStones``.
+ZA_UNIQUE_HELD_ITEMS = frozenset(
+    list(range(656, 686)) + list(range(752, 765)) + [767, 768, 769, 770]
+    + list(range(2559, 2588)) + list(range(2635, 2651))
+    + [534, 535]  # Primal Orbs
+)
+
 
 def _detect_89(raw: bytes) -> type:
     """Separate the Switch-era formats, which all share a size."""
@@ -134,6 +143,12 @@ def _detect_89(raw: bytes) -> type:
         return PA9
     if any(core[0x82:0x8A]):            # relearn moves, unused by Z-A
         return PK9
+    if read_u16(core, 0x0A) in ZA_UNIQUE_HELD_ITEMS:
+        return PA9
+    # PKHeX gives up here and lets the file extension or the surrounding save
+    # decide, because a level 1 Pokemon that has never been transferred sets
+    # none of the flags above. Nothing here has that context, so take the more
+    # common of the two.
     return PK9
 
 

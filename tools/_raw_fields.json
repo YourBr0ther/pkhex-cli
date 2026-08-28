@@ -153,7 +153,7 @@
    ],
    [
     "Japanese",
-    "RawOT.Length == StringLengthJapanese"
+    "RawOT.Length == 6"
    ],
    [
     "NicknameTrash",
@@ -17747,11 +17747,11 @@
    ],
    [
     "RecordFlagsBase",
-    "Data.Slice(RecordStartBase, RecordLengthBase)"
+    "Data.Slice(0x12F, RecordLengthBase)"
    ],
    [
     "RecordFlagsDLC",
-    "Data.Slice(RecordStartDLC, RecordLengthDLC)"
+    "Data.Slice(0x4B, RecordLengthDLC)"
    ],
    [
     "MarkingCount",
@@ -24241,11 +24241,11 @@
   "unhandled": [
    [
     "SIZE_PARTY",
-    "SIZE"
+    "260"
    ],
    [
     "SIZE_STORED",
-    "SIZE"
+    "260"
    ],
    [
     "Context",
@@ -28011,11 +28011,11 @@
    ],
    [
     "RecordFlagsBase",
-    "Data.Slice(RecordStartBase, RecordLengthBase)"
+    "Data.Slice(0x12F, RecordLengthBase)"
    ],
    [
     "RecordFlagsDLC",
-    "Data.Slice(RecordStartDLC, RecordLengthDLC)"
+    "Data.Slice(0x4B, RecordLengthDLC)"
    ],
    [
     "MarkingCount",
@@ -28071,11 +28071,11 @@
    ],
    [
     "PlusFlags0",
-    "Data.Slice(PlusStart0, PlusLength0)"
+    "Data.Slice(0xD6, PlusLength0)"
    ],
    [
     "PlusFlags1",
-    "Data.Slice(PlusStart1, PlusLength1)"
+    "Data.Slice(0x94, PlusLength1)"
    ]
   ]
  },
@@ -36064,6 +36064,34 @@
     "max_value": null
    },
    {
+    "name": "NicknameTrash",
+    "kind": "span",
+    "offset": 36,
+    "cs_type": "Span<byte>",
+    "readonly": true,
+    "shift": null,
+    "mask": null,
+    "bit": null,
+    "length": 12,
+    "enum": null,
+    "base_size": null,
+    "max_value": null
+   },
+   {
+    "name": "OriginalTrainerTrash",
+    "kind": "span",
+    "offset": 48,
+    "cs_type": "Span<byte>",
+    "readonly": true,
+    "shift": null,
+    "mask": null,
+    "bit": null,
+    "length": 12,
+    "enum": null,
+    "base_size": null,
+    "max_value": null
+   },
+   {
     "name": "PokerusDays",
     "kind": "packed_bits",
     "offset": 32,
@@ -36193,11 +36221,11 @@
    ],
    [
     "MaxStringLengthTrainer",
-    "StringLength"
+    "12"
    ],
    [
     "MaxStringLengthNickname",
-    "StringLength"
+    "12"
    ],
    [
     "SpriteItem",
@@ -36208,20 +36236,12 @@
     "StringConverter2.GetString(NicknameTrash, Language)"
    ],
    [
-    "NicknameTrash",
-    "Data.Slice(0x24, StringLength)"
-   ],
-   [
-    "OriginalTrainerTrash",
-    "Data.Slice(0x30, StringLength)"
-   ],
-   [
     "TrashCharCountTrainer",
-    "StringLength"
+    "12"
    ],
    [
     "TrashCharCountNickname",
-    "StringLength"
+    "12"
    ],
    [
     "HasOriginalMetLocation",

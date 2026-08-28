@@ -55,8 +55,11 @@ select = ["E", "F", "B", "SIM", "RUF", "UP"]
 # Tests deliberately use fullwidth text to exercise the Japanese encodings.
 "tests/test_real_saves.py" = ["RUF001"]
 "tests/test_entities.py" = ["RUF001"]
+"tests/test_strings.py" = ["RUF001"]
 # The typographic apostrophe is a character these tables actually remap.
 "src/pkhexpy/strings/gen345.py" = ["RUF001"]
+# The fullwidth glyphs are the ligature codes themselves, not typos for ASCII.
+"src/pkhexpy/strings/gen12.py" = ["RUF001"]
 # Dense by nature: SVG path data and C# matching patterns read worse wrapped.
 "tools/make_artwork.py" = ["E501"]
 "tools/extract_fields.py" = ["E501"]

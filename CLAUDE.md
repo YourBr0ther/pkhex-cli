@@ -130,7 +130,9 @@ inverted gender flag, and `play_time`, whose three units differ per generation.
 **A field the JSON exports must be a field the JSON can import.** `apply_dict`
 used to write party and boxes and drop the trainer block without a word, so an
 edit to money or trainer name vanished into a file that reported success.
-`apply_trainer` writes it and raises on any key it does not know.
+`apply_trainer` writes it and raises on any key it does not know, and
+`serialize._apply_fields` does the same for the entity half, where a misspelled
+field name was accepted and then lost.
 
 **Base stats depend on the form, not just the species.** Giratina's two forms
 swap Attack with Defense and Sp. Atk with Sp. Def, so a species-only lookup gets
@@ -141,7 +143,23 @@ same personal table; `data.form_entry` follows the index PKHeX calls
 **A format with its own stat formula returns nothing rather than guessing.**
 Let's Go adds Awakening Values and a friendship scalar, Legends Arceus adds
 Ganbaru values. Both set `STAT_FORMULA = None` so `calculated_stats` returns
-None instead of a plausible wrong answer.
+None instead of a plausible wrong answer. The inverse costs just as much:
+Stadium 2 sat on the default `"modern"` formula with a 252 EV cap while holding
+Gen2 stat experience, and `test_every_format_reads_its_derived_properties`
+exists because PKHeX ships no `.sk2` fixture for the file-driven tests to walk.
+
+**Reading past the end of a buffer raises.** Both directions, every width.
+`binio._w` refuses a write, and `_u` refuses a read, because a short slice
+decodes to a plausible smaller number and a negative offset decodes to zero.
+Where a field legitimately may not be there, as a stored-size record's party
+stat block is not, ask `Field.fits()` rather than catching. Catching also
+swallows the decoder bug you wanted to hear about.
+
+**Equality is per format, and entities are unhashable.** PK8, PK9 and PA9 are
+all 0x158 bytes, so comparing buffers alone made a zeroed one of each equal.
+Gen1/2 keep the egg flag and the language outside the record, so those count
+too. Nothing hashes an entity: the buffer is what every setter writes, so a
+hash taken now goes stale on the next assignment. Key on `to_bytes()`.
 
 ## Testing
 

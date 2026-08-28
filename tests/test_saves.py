@@ -14,6 +14,7 @@ from pkhexpy.binio import write_u16, write_u32
 from pkhexpy.pkm import formats
 from pkhexpy.pkm import io as entity_io
 from pkhexpy.saves import base, gen3, gen89, swish
+from pkhexpy.saves.gen45 import SIZE_G4RAW
 from pkhexpy.saves.gen3 import FOOTER_COUNTER, FOOTER_ID, SIZE_MAIN, SIZE_SECTOR
 from pkhexpy.saves.swish import SCBlock, SCTypeCode
 
@@ -699,3 +700,135 @@ def test_a_size_shared_with_a_supported_game_names_both() -> None:
 def test_an_unrecognized_size_still_says_so() -> None:
     with pytest.raises(saves.SaveFormatError, match="no save format matches"):
         saves.from_bytes(bytes(12345))
+
+
+def test_gen4_declares_its_extra_storage() -> None:
+    """Gen4 was the only generation reading nothing outside party and boxes.
+
+    The daycare offsets were sitting in the class bodies unused, so a Pokemon
+    left with the daycare man was invisible.
+    """
+    from pkhexpy.saves.gen45 import SAV4DP, SAV4HGSS, SAV4Pt
+
+    def kinds(cls) -> set[str]:
+        return {region.kind for region in cls(bytearray(SIZE_G4RAW)).extra_regions()}
+
+    for cls in (SAV4DP, SAV4Pt, SAV4HGSS):
+        assert "daycare" in kinds(cls), cls.__name__
+    # Only HG/SS sends a Pokemon out on a Pokewalker course.
+    assert "pokewalker" in kinds(SAV4HGSS)
+    assert "pokewalker" not in kinds(SAV4DP)
+
+
+def test_gen4_reads_a_real_daycare(real_saves: list[Path]) -> None:
+    """The trainer name on the daycare occupant should match the save's own,
+    which is what makes the offset and record size credible rather than a
+    slice of neighbouring bytes that happens to decode."""
+    checked = 0
+    for path in real_saves:
+        try:
+            sav = saves.from_bytes(path.read_bytes())
+        except saves.SaveFormatError:
+            continue
+        if sav.GENERATION != 4:
+            continue
+        for slot, entity in sav.iter_extra():
+            assert slot.kind in ("daycare", "pokewalker")
+            assert entity.species_name
+            assert 1 <= entity.current_level <= 100
+            assert entity.original_trainer_name
+            checked += 1
+    assert checked, "no Gen4 save in the corpus had extra storage occupied"
+
+
+def test_removing_a_party_member_works_the_same_two_ways(
+        real_saves: list[Path]) -> None:
+    """remove_party_slot used to raise on Gen1/2 while set_party_slot(slot,
+    None) did the job, because the packed-list override never declared that it
+    could resize the party."""
+    checked = 0
+    for path in real_saves:
+        try:
+            sav = saves.from_bytes(path.read_bytes())
+        except saves.SaveFormatError:
+            continue
+        if sav.GENERATION > 2 or sav.party_count < 2:
+            continue
+        raw = path.read_bytes()
+        removed = saves.from_bytes(raw)
+        removed.remove_party_slot(0)
+
+        cleared = saves.from_bytes(raw)
+        cleared.set_party_slot(0, None)
+
+        assert removed.party_count == sav.party_count - 1, path.name
+        assert bytes(removed.data) == bytes(cleared.data), path.name
+        checked += 1
+    assert checked, "no Gen1/2 save in the corpus had a party to shorten"
+
+
+def test_box_names_are_read_for_every_generation_that_stores_them(
+        real_saves: list[Path]) -> None:
+    """Gen2 through Gen5 returned None for every box.
+
+    Gen1 has no box names in the game, Let's Go keeps one storage rather than
+    boxes, and Scarlet/Violet leaves the block zeroed until the player renames
+    something, so those three are allowed to have none.
+    """
+    NO_NAMES = {"rby", "gg", "sv", "za"}
+    seen: dict[str, bool] = {}
+    for path in real_saves:
+        try:
+            sav = saves.from_bytes(path.read_bytes())
+        except saves.SaveFormatError:
+            continue
+        named = any(sav.box_name(box) for box in range(sav.BOX_COUNT))
+        seen[sav.KEY] = seen.get(sav.KEY, False) or named
+
+    for key, named in sorted(seen.items()):
+        if key in NO_NAMES:
+            continue
+        assert named, f"{key} reads no box names"
+    assert seen.keys() - NO_NAMES, "no save in the corpus had named boxes"
+
+
+def test_a_renamed_box_reads_back_as_the_player_typed_it(
+        real_saves: list[Path]) -> None:
+    """Default names prove only that the offset lands on text. A box the player
+    renamed is what proves it is the right text."""
+    wanted = {
+        "e": "ボックス１",          # a Japanese Emerald, so the glyph table too
+        "frlg": "EGG RSE",
+        "dp": "1st pkmn",
+        "pt": "Uber1",
+        "b2w2": "Shinies",
+        "gsc": "Evolvers",
+    }
+    found: set[str] = set()
+    for path in real_saves:
+        try:
+            sav = saves.from_bytes(path.read_bytes())
+        except saves.SaveFormatError:
+            continue
+        expected = wanted.get(sav.KEY)
+        # A save with unnamed boxes yields None, which would match a key this
+        # table does not list.
+        if expected and expected in {sav.box_name(b) for b in range(sav.BOX_COUNT)}:
+            found.add(sav.KEY)
+    assert found == set(wanted), f"missing {sorted(set(wanted) - found)}"
+
+
+def test_box_names_do_not_change_the_bytes(real_saves: list[Path]) -> None:
+    """Reading a name must not disturb a save that is only being read."""
+    checked = 0
+    for path in real_saves:
+        raw = path.read_bytes()
+        try:
+            sav = saves.from_bytes(raw)
+        except saves.SaveFormatError:
+            continue
+        for box in range(sav.BOX_COUNT):
+            sav.box_name(box)
+        assert sav.to_bytes() == raw, path.name
+        checked += 1
+    assert checked > 50

@@ -198,6 +198,16 @@ class SAV3(SaveFile):
     def current_box(self) -> int:
         return self.storage[0]
 
+    #: Box names sit in the storage buffer immediately past the last box,
+    #: eight characters plus a terminator each.
+    BOX_NAME_LENGTH = 9
+
+    def box_name(self, box: int) -> str | None:
+        self._check_index("box", box, self.BOX_COUNT)
+        start = (self._box_offset(self.BOX_COUNT) + box * self.BOX_NAME_LENGTH)
+        raw = bytes(self.storage[start:start + self.BOX_NAME_LENGTH])
+        return self.decode_string(raw) or None
+
     # --- trainer -------------------------------------------------------------
 
     def region(self, name: str) -> tuple[bytearray, int]:
