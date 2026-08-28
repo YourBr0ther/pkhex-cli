@@ -115,6 +115,7 @@ class SAVGB(SaveFile):
 
     def _unpack(self, start: int, capacity: int, slot_size: int, index: int):
         """Read one slot out of a packed list."""
+        self._check_index("slot", index, capacity)
         base = start + 1 + (capacity + 1)
         body = base + slot_size * index
         names = base + slot_size * capacity
@@ -140,7 +141,12 @@ class SAVGB(SaveFile):
 
     def _slot_regions(self, start: int, capacity: int, slot_size: int,
                       index: int) -> tuple[int, int, int]:
-        """Byte offsets of one slot's body, trainer name, and nickname."""
+        """Byte offsets of one slot's body, trainer name, and nickname.
+
+        Gen1/2 pack the list themselves rather than going through
+        ``box_slot_offset``, so the range check belongs here.
+        """
+        self._check_index("slot", index, capacity)
         base = start + 1 + (capacity + 1)
         names = base + slot_size * capacity
         return (base + slot_size * index,
@@ -211,10 +217,10 @@ class SAVGB(SaveFile):
 
     # --- storage -------------------------------------------------------------
 
-    def box_offset(self, box: int) -> int:
+    def _box_offset(self, box: int) -> int:
         return self._box_list_offset(box)
 
-    def party_offset(self, slot: int) -> int:
+    def _party_offset(self, slot: int) -> int:
         return self.PARTY_OFFSET
 
     @property
@@ -222,18 +228,22 @@ class SAVGB(SaveFile):
         return self.data[self.PARTY_OFFSET]
 
     def get_box_slot(self, box: int, slot: int):
-        return self._unpack(self._box_list_offset(box), self.BOX_SLOT_COUNT,
+        return self._unpack(self.box_offset(box), self.BOX_SLOT_COUNT,
                             self.SIZE_BOXSLOT, slot)
 
     def set_box_slot(self, box: int, slot: int, entity) -> None:
-        self._pack(self._box_list_offset(box), self.BOX_SLOT_COUNT,
+        self._check_entity(entity)
+        self._pack(self.box_offset(box), self.BOX_SLOT_COUNT,
                    self.SIZE_BOXSLOT, slot, entity)
 
     def get_party_slot(self, slot: int):
-        return self._unpack(self.PARTY_OFFSET, 6, self.SIZE_PARTY_SLOT, slot)
+        return self._unpack(self.PARTY_OFFSET, self.PARTY_SLOT_COUNT,
+                            self.SIZE_PARTY_SLOT, slot)
 
     def set_party_slot(self, slot: int, entity) -> None:
-        self._pack(self.PARTY_OFFSET, 6, self.SIZE_PARTY_SLOT, slot, entity)
+        self._check_entity(entity)
+        self._pack(self.PARTY_OFFSET, self.PARTY_SLOT_COUNT,
+                   self.SIZE_PARTY_SLOT, slot, entity)
 
     # --- trainer -------------------------------------------------------------
 

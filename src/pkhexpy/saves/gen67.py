@@ -120,15 +120,18 @@ class SAV67(SaveFile):
             return self.BOX_FIXED_OFFSET
         return self.block_offset(self.BOX_BLOCK)
 
-    def party_offset(self, slot: int) -> int:
+    def _party_offset(self, slot: int) -> int:
         return self._party_base + self.SIZE_PARTY_SLOT * slot
 
-    def box_offset(self, box: int) -> int:
+    def _box_offset(self, box: int) -> int:
         return self._box_base + self.SIZE_BOXSLOT * self.BOX_SLOT_COUNT * box
 
     @property
     def party_count(self) -> int:
         return self.data[self._party_base + self.PARTY_COUNT_OFFSET]
+
+    def _set_party_count(self, count: int) -> None:
+        self.data[self._party_base + self.PARTY_COUNT_OFFSET] = count
 
     def box_name(self, box: int) -> str | None:
         if self.BOX_LAYOUT_BLOCK is None:
@@ -280,13 +283,21 @@ class SAV7b(SAV67):
         return sum(1 for slot in range(6)
                    if self._party_pointer(slot) < self.MAX_STORAGE_SLOTS)
 
+    def _set_party_count(self, count: int) -> None:
+        # The party is a list of pointers into box storage, not slots of its
+        # own, so resizing it means rewriting those pointers. Shifting the
+        # entities would write Pokemon into box slots the pointers still name.
+        raise NotImplementedError(
+            "Let's Go stores its party as pointers into the box list; "
+            "adding or removing a party member is not supported")
+
     @property
     def stored_count(self) -> int:
         """Total Pokemon in storage, as the header records it."""
         base = self.block_offset(self.POKE_LIST_HEADER_BLOCK)
         return read_u16(self.data, base + 7 * 2)
 
-    def party_offset(self, slot: int) -> int:
+    def _party_offset(self, slot: int) -> int:
         pointer = self._party_pointer(slot)
         if pointer >= self.MAX_STORAGE_SLOTS:
             raise IndexError(f"party slot {slot} is empty")

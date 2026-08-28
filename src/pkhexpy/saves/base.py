@@ -63,12 +63,35 @@ class SaveFile:
     # --- layout, supplied by subclasses -------------------------------------
 
     def box_offset(self, box: int) -> int:
+        self._check_index("box", box, self.BOX_COUNT)
+        return self._box_offset(box)
+
+    def _box_offset(self, box: int) -> int:
         raise NotImplementedError
 
     def box_slot_offset(self, box: int, slot: int) -> int:
+        self._check_index("box slot", slot, self.BOX_SLOT_COUNT)
+        return self._box_slot_offset(box, slot)
+
+    def _box_slot_offset(self, box: int, slot: int) -> int:
         return self.box_offset(box) + slot * self.SIZE_BOXSLOT
 
+    @staticmethod
+    def _check_index(what: str, index: int, count: int) -> None:
+        """Reject an index outside the region before it becomes an offset.
+
+        An out-of-range index would otherwise be turned into an offset anyway
+        and read, or worse write, whatever else lives there.
+        """
+        if not 0 <= index < count:
+            raise IndexError(
+                f"{what} {index} is out of range; this save has {count}")
+
     def party_offset(self, slot: int) -> int:
+        self._check_index("party slot", slot, self.PARTY_SLOT_COUNT)
+        return self._party_offset(slot)
+
+    def _party_offset(self, slot: int) -> int:
         raise NotImplementedError
 
     @property
@@ -169,18 +192,88 @@ class SaveFile:
         """The entity in one box slot, or None when the slot is empty."""
         return self._read_entity(self.box_slot_offset(box, slot), self.SIZE_BOXSLOT)
 
+    def _check_entity(self, entity) -> None:
+        """Reject an entity from another generation.
+
+        Several formats share a stored size, so writing one into the other's
+        slot succeeds and the bytes are simply reinterpreted under the wrong
+        layout. The save still checksums, which makes it look fine.
+        """
+        if entity is None or isinstance(entity, self.ENTITY):
+            return
+        raise TypeError(
+            f"{self.GAME} stores {self.ENTITY.__name__}, not "
+            f"{type(entity).__name__}; convert it first")
+
+    def _slot_bytes(self, entity, size: int) -> bytes:
+        """The bytes to write into a slot: checked, encrypted, exactly sized.
+
+        Every slot write goes through here so the type check and the fixed
+        size cannot be skipped by a generation that overrides the accessor.
+        """
+        self._check_entity(entity)
+        raw = entity.encrypted_bytes() if entity is not None else b""
+        return fit(raw, size)
+
     def set_box_slot(self, box: int, slot: int, entity) -> None:
         offset = self.box_slot_offset(box, slot)
-        raw = entity.encrypted_bytes() if entity is not None else b""
-        self.data[offset:offset + self.SIZE_BOXSLOT] = fit(raw, self.SIZE_BOXSLOT)
+        self.data[offset:offset + self.SIZE_BOXSLOT] = self._slot_bytes(
+            entity, self.SIZE_BOXSLOT)
 
     def get_party_slot(self, slot: int):
         return self._read_entity(self.party_offset(slot), self.SIZE_PARTY_SLOT)
 
-    def set_party_slot(self, slot: int, entity) -> None:
+    def _write_party_slot(self, slot: int, entity) -> None:
+        """Put an entity in a party slot without touching the party size."""
         offset = self.party_offset(slot)
-        raw = entity.encrypted_bytes() if entity is not None else b""
-        self.data[offset:offset + self.SIZE_PARTY_SLOT] = fit(raw, self.SIZE_PARTY_SLOT)
+        self.data[offset:offset + self.SIZE_PARTY_SLOT] = self._slot_bytes(
+            entity, self.SIZE_PARTY_SLOT)
+
+    def _set_party_count(self, count: int) -> None:
+        raise NotImplementedError(
+            f"{self.GAME} does not support changing the party size")
+
+    def _require_resizable_party(self) -> None:
+        """Fail before the first write, not halfway through the shuffle."""
+        if type(self)._set_party_count is SaveFile._set_party_count:
+            raise NotImplementedError(
+                f"{self.GAME} does not support changing the party size")
+
+    def set_party_slot(self, slot: int, entity) -> None:
+        """Put an entity in a party slot, or remove one when entity is None.
+
+        The party is a list, not an array of six independent slots: the games
+        read a count and expect the occupants to sit at the front. Writing a
+        seventh Pokemon into slot 4 of a party of two, or leaving a hole by
+        clearing the lead, produces a party no game would have written.
+        """
+        if entity is None:
+            self.remove_party_slot(slot)
+            return
+        self._check_index("party slot", slot, self.PARTY_SLOT_COUNT)
+        count = self.party_count
+        if slot > count:
+            self._require_resizable_party()
+            raise IndexError(
+                f"party slot {slot} would leave a gap; this party holds "
+                f"{count}, so the next free slot is {count}")
+        if slot == count:
+            self._require_resizable_party()
+        self._write_party_slot(slot, entity)
+        if slot == count:
+            self._set_party_count(count + 1)
+
+    def remove_party_slot(self, slot: int) -> None:
+        """Take a Pokemon out of the party, closing the gap behind it."""
+        self._check_index("party slot", slot, self.PARTY_SLOT_COUNT)
+        count = self.party_count
+        if slot >= count:
+            return
+        self._require_resizable_party()
+        for index in range(slot, count - 1):
+            self._write_party_slot(index, self.get_party_slot(index + 1))
+        self._write_party_slot(count - 1, None)
+        self._set_party_count(count - 1)
 
     def iter_boxes(self) -> Iterator[tuple[int, int, Any]]:
         """Yield (box, slot, entity) for every occupied box slot."""

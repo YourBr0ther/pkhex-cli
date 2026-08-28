@@ -277,3 +277,108 @@ def test_block_key_derivation() -> None:
     assert swish.block_key("FSYS_CLUB_HUD_COACH_TEACHER_MATH") == 0xFA1952E8
     assert swish.block_key("FSYS_CLUB_HUD_COACH_TEACHER_LANGUAGE") == 0xE3FFF180
     assert swish.block_key("FEVT_SUB_014_KUI_01_RELEASE") == 0x12AC859B
+
+
+def _one_per_generation(real_saves: list[Path]) -> list:
+    """One readable save from each generation the corpus covers."""
+    picked: dict[int, object] = {}
+    for path in real_saves:
+        try:
+            sav = saves.from_bytes(path.read_bytes())
+        except saves.SaveFormatError:
+            continue
+        picked.setdefault(sav.GENERATION, sav)
+    if not picked:
+        pytest.skip("no saves read from the corpus")
+    return [picked[gen] for gen in sorted(picked)]
+
+
+def test_slot_index_out_of_range_is_rejected(real_saves: list[Path]) -> None:
+    """An index past the end would otherwise be turned into an offset anyway,
+    and the write would land on whatever else lives there."""
+    checked = 0
+    for sav in _one_per_generation(real_saves):
+        occupant = sav.get_box_slot(0, 0) or sav.get_party_slot(0)
+        for box, slot in ((sav.BOX_COUNT, 0), (0, sav.BOX_SLOT_COUNT), (-1, 0)):
+            with pytest.raises(IndexError):
+                sav.get_box_slot(box, slot)
+            with pytest.raises(IndexError):
+                sav.set_box_slot(box, slot, occupant)
+            checked += 1
+        for slot in (sav.PARTY_SLOT_COUNT, -1):
+            with pytest.raises(IndexError):
+                sav.get_party_slot(slot)
+            with pytest.raises(IndexError):
+                sav.set_party_slot(slot, occupant)
+            checked += 1
+    assert checked >= 5 * 5, f"only {checked} bounds checks ran"
+
+
+def test_entity_from_another_generation_is_rejected(real_saves: list[Path]) -> None:
+    """PK4 and PK5 share a stored size, so an unchecked write succeeds and the
+    bytes are silently reinterpreted under the wrong layout."""
+    by_gen = {sav.GENERATION: sav for sav in _one_per_generation(real_saves)}
+    checked = 0
+    for gen, sav in by_gen.items():
+        alien = next((other.get_box_slot(0, 0) or other.get_party_slot(0)
+                      for g, other in by_gen.items() if g != gen), None)
+        if alien is None or isinstance(alien, sav.ENTITY):
+            continue
+        with pytest.raises(TypeError):
+            sav.set_box_slot(0, 0, alien)
+        with pytest.raises(TypeError):
+            sav.set_party_slot(0, alien)
+        checked += 1
+    assert checked >= 2, f"only {checked} formats were offered an alien entity"
+
+
+def test_removing_a_party_member_closes_the_gap(real_saves: list[Path]) -> None:
+    """The games read a count and expect the party to sit at the front, so a
+    hole at the lead is a state no game would have written."""
+    checked = 0
+    for sav in _one_per_generation(real_saves):
+        before = [entity.species_name for _, entity in sav.iter_party()]
+        if len(before) < 2:
+            continue
+        try:
+            sav.set_party_slot(0, None)
+        except NotImplementedError:
+            # Let's Go stores its party as pointers into the box list.
+            continue
+        reloaded = saves.from_bytes(sav.to_bytes())
+        assert reloaded.party_count == len(before) - 1
+        assert [e.species_name for _, e in reloaded.iter_party()] == before[1:]
+        assert reloaded.checksums_valid
+        checked += 1
+    assert checked >= 4, f"only {checked} saves had a party to shrink"
+
+
+def test_adding_a_party_member_raises_the_count(real_saves: list[Path]) -> None:
+    checked = 0
+    for sav in _one_per_generation(real_saves):
+        count = sav.party_count
+        if count == 0 or count >= sav.PARTY_SLOT_COUNT:
+            continue
+        try:
+            sav.set_party_slot(count, sav.get_party_slot(0))
+        except NotImplementedError:
+            continue
+        reloaded = saves.from_bytes(sav.to_bytes())
+        assert reloaded.party_count == count + 1
+        assert len(list(reloaded.iter_party())) == count + 1
+        assert reloaded.checksums_valid
+        checked += 1
+    assert checked >= 2, f"only {checked} saves had room in the party"
+
+
+def test_writing_past_the_party_end_is_refused(real_saves: list[Path]) -> None:
+    """Writing into slot 4 of a party of two would leave a hole behind it."""
+    checked = 0
+    for sav in _one_per_generation(real_saves):
+        count = sav.party_count
+        if count == 0 or count + 1 >= sav.PARTY_SLOT_COUNT:
+            continue
+        with pytest.raises((IndexError, NotImplementedError)):
+            sav.set_party_slot(count + 1, sav.get_party_slot(0))
+        checked += 1
+    assert checked >= 2, f"only {checked} saves had room to leave a gap"

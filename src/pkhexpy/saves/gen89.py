@@ -10,7 +10,7 @@ from __future__ import annotations
 from ..binio import read_u16, read_u32
 from ..pkm.formats import PA8, PA9, PK8, PK9
 from . import swish
-from .base import SaveFile, fit
+from .base import SaveFile
 from .swish import SCBlock
 
 
@@ -82,13 +82,13 @@ class SAV89(SaveFile):
     def party_stride(self) -> int:
         return self.PARTY_SLOT_STRIDE or self.SIZE_PARTY_SLOT
 
-    def box_slot_offset(self, box: int, slot: int) -> int:
+    def _box_slot_offset(self, box: int, slot: int) -> int:
         return self.box_offset(box) + slot * self.box_stride
 
-    def box_offset(self, box: int) -> int:
+    def _box_offset(self, box: int) -> int:
         return self.box_stride * self.BOX_SLOT_COUNT * box
 
-    def party_offset(self, slot: int) -> int:
+    def _party_offset(self, slot: int) -> int:
         return self.party_stride * slot
 
     @property
@@ -96,6 +96,14 @@ class SAV89(SaveFile):
         data = self.party_data
         index = self.PARTY_SLOT_COUNT * self.party_stride
         return data[index] if index < len(data) else 0
+
+    def _set_party_count(self, count: int) -> None:
+        data = self.party_data
+        index = self.PARTY_SLOT_COUNT * self.party_stride
+        if index >= len(data):
+            raise NotImplementedError(
+                f"{self.GAME} has no party count byte to update")
+        data[index] = count
 
     def _read_from(self, buffer: bytearray, offset: int, size: int):
         raw = bytes(buffer[offset:offset + size])
@@ -110,17 +118,17 @@ class SAV89(SaveFile):
 
     def set_box_slot(self, box: int, slot: int, entity) -> None:
         offset = self.box_slot_offset(box, slot)
-        raw = entity.encrypted_bytes() if entity is not None else b""
-        self.box_data[offset:offset + self.SIZE_BOXSLOT] = fit(raw, self.SIZE_BOXSLOT)
+        self.box_data[offset:offset + self.SIZE_BOXSLOT] = self._slot_bytes(
+            entity, self.SIZE_BOXSLOT)
 
     def get_party_slot(self, slot: int):
         return self._read_from(self.party_data,
                                self.party_offset(slot), self.SIZE_PARTY_SLOT)
 
-    def set_party_slot(self, slot: int, entity) -> None:
+    def _write_party_slot(self, slot: int, entity) -> None:
         offset = self.party_offset(slot)
-        raw = entity.encrypted_bytes() if entity is not None else b""
-        self.party_data[offset:offset + self.SIZE_PARTY_SLOT] = fit(raw, self.SIZE_PARTY_SLOT)
+        self.party_data[offset:offset + self.SIZE_PARTY_SLOT] = self._slot_bytes(
+            entity, self.SIZE_PARTY_SLOT)
 
     def box_name(self, box: int) -> str | None:
         data = self.block_data(self.KEY_BOX_LAYOUT)
@@ -269,6 +277,10 @@ class SAV9ZA(SAV9SV):
     BOX_SLOT_STRIDE = 0x158 + 0x40
     #: 0x158 record plus 0x48, then the same 0x40 padding.
     PARTY_SLOT_STRIDE = 0x158 + 0x48 + 0x40
+
+    def _set_party_count(self, count: int) -> None:
+        # Nothing to write: the count is implied by where the slots run out.
+        return
 
     @property
     def party_count(self) -> int:

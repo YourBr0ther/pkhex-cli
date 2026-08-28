@@ -11,7 +11,7 @@ from __future__ import annotations
 from ..binio import read_i16, read_u16, read_u32, write_u16
 from ..pkm.formats import PK3
 from . import checksums
-from .base import SaveFile, fit
+from .base import SaveFile
 
 SIZE_SECTOR = 0x1000
 SIZE_SECTOR_USED = 0xF80
@@ -146,16 +146,19 @@ class SAV3(SaveFile):
 
     # --- storage -------------------------------------------------------------
 
-    def box_offset(self, box: int) -> int:
+    def _box_offset(self, box: int) -> int:
         # The storage buffer opens with a 4-byte current-box index.
         return 4 + self.SIZE_BOXSLOT * self.BOX_SLOT_COUNT * box
 
-    def party_offset(self, slot: int) -> int:
+    def _party_offset(self, slot: int) -> int:
         return self.PARTY_OFFSET + self.SIZE_PARTY_SLOT * slot
 
     @property
     def party_count(self) -> int:
         return self.large[self.PARTY_COUNT_OFFSET]
+
+    def _set_party_count(self, count: int) -> None:
+        self.large[self.PARTY_COUNT_OFFSET] = count
 
     def get_box_slot(self, box: int, slot: int):
         offset = self.box_slot_offset(box, slot)
@@ -167,8 +170,8 @@ class SAV3(SaveFile):
 
     def set_box_slot(self, box: int, slot: int, entity) -> None:
         offset = self.box_slot_offset(box, slot)
-        raw = entity.encrypted_bytes() if entity is not None else b""
-        self.storage[offset:offset + self.SIZE_BOXSLOT] = fit(raw, self.SIZE_BOXSLOT)
+        self.storage[offset:offset + self.SIZE_BOXSLOT] = self._slot_bytes(
+            entity, self.SIZE_BOXSLOT)
 
     def get_party_slot(self, slot: int):
         offset = self.party_offset(slot)
@@ -178,10 +181,10 @@ class SAV3(SaveFile):
         entity = PK3(PK3.decrypt_buffer(raw))
         return entity if entity.species else None
 
-    def set_party_slot(self, slot: int, entity) -> None:
+    def _write_party_slot(self, slot: int, entity) -> None:
         offset = self.party_offset(slot)
-        raw = entity.encrypted_bytes() if entity is not None else b""
-        self.large[offset:offset + self.SIZE_PARTY_SLOT] = fit(raw, self.SIZE_PARTY_SLOT)
+        self.large[offset:offset + self.SIZE_PARTY_SLOT] = self._slot_bytes(
+            entity, self.SIZE_PARTY_SLOT)
 
     @property
     def current_box(self) -> int:

@@ -15,7 +15,7 @@ from ..binio import read_u16, read_u32, write_u16
 from ..data import DATA_DIR
 from ..pkm.formats import PK4, PK5
 from . import checksums
-from .base import SaveFile, fit
+from .base import SaveFile
 
 SIZE_G4RAW = 0x80000
 SIZE_G5RAW = 0x80000
@@ -96,15 +96,18 @@ class SAV4(SaveFile):
 
     # --- storage -------------------------------------------------------------
 
-    def box_offset(self, box: int) -> int:
+    def _box_offset(self, box: int) -> int:
         return self.BOX_START + box * self.BOX_STRIDE
 
-    def party_offset(self, slot: int) -> int:
+    def _party_offset(self, slot: int) -> int:
         return self.PARTY_OFFSET + self.SIZE_PARTY_SLOT * slot
 
     @property
     def party_count(self) -> int:
         return self.data[self.general_base + self.PARTY_OFFSET - 4]
+
+    def _set_party_count(self, count: int) -> None:
+        self.data[self.general_base + self.PARTY_OFFSET - 4] = count
 
     def _slot(self, base: int, offset: int, size: int):
         start = base + offset
@@ -120,17 +123,17 @@ class SAV4(SaveFile):
 
     def set_box_slot(self, box: int, slot: int, entity) -> None:
         start = self.storage_base + self.box_slot_offset(box, slot)
-        raw = entity.encrypted_bytes() if entity is not None else b""
-        self.data[start:start + self.SIZE_BOXSLOT] = fit(raw, self.SIZE_BOXSLOT)
+        self.data[start:start + self.SIZE_BOXSLOT] = self._slot_bytes(
+            entity, self.SIZE_BOXSLOT)
 
     def get_party_slot(self, slot: int):
         return self._slot(self.general_base, self.party_offset(slot),
                           self.SIZE_PARTY_SLOT)
 
-    def set_party_slot(self, slot: int, entity) -> None:
+    def _write_party_slot(self, slot: int, entity) -> None:
         start = self.general_base + self.party_offset(slot)
-        raw = entity.encrypted_bytes() if entity is not None else b""
-        self.data[start:start + self.SIZE_PARTY_SLOT] = fit(raw, self.SIZE_PARTY_SLOT)
+        self.data[start:start + self.SIZE_PARTY_SLOT] = self._slot_bytes(
+            entity, self.SIZE_PARTY_SLOT)
 
     # --- trainer -------------------------------------------------------------
 
@@ -261,16 +264,19 @@ class SAV5(SaveFile):
 
     # --- storage -------------------------------------------------------------
 
-    def box_offset(self, box: int) -> int:
+    def _box_offset(self, box: int) -> int:
         # Each box chunk is padded by 0x10 bytes past its 30 slots.
         return self.BOX_BASE + self.SIZE_BOXSLOT * self.BOX_SLOT_COUNT * box + box * 0x10
 
-    def party_offset(self, slot: int) -> int:
+    def _party_offset(self, slot: int) -> int:
         return self.PARTY_BASE + 8 + self.SIZE_PARTY_SLOT * slot
 
     @property
     def party_count(self) -> int:
         return self.data[self.PARTY_BASE + 4]
+
+    def _set_party_count(self, count: int) -> None:
+        self.data[self.PARTY_BASE + 4] = count
 
     # --- trainer -------------------------------------------------------------
 

@@ -58,15 +58,18 @@ class SAV8BS(SaveFile):
 
     # --- storage -------------------------------------------------------------
 
-    def box_offset(self, box: int) -> int:
+    def _box_offset(self, box: int) -> int:
         return self.BOX_BASE + self.SIZE_BOXSLOT * self.BOX_SLOT_COUNT * box
 
-    def party_offset(self, slot: int) -> int:
+    def _party_offset(self, slot: int) -> int:
         return self.PARTY_BASE + self.SIZE_PARTY_SLOT * slot
 
     @property
     def party_count(self) -> int:
         return self.data[self.PARTY_BASE + self.PARTY_COUNT_OFFSET]
+
+    def _set_party_count(self, count: int) -> None:
+        self.data[self.PARTY_BASE + self.PARTY_COUNT_OFFSET] = count
 
     def box_name(self, box: int) -> str | None:
         start = self.BOX_LAYOUT_BASE + box * self.BOX_NAME_LENGTH
