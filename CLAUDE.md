@@ -102,9 +102,13 @@ it just encoded and raises if the text did not survive.
 ## Testing
 
 ```sh
-python3 -m pytest tests/ -q          # 73 tests
+python3 -m pytest tests/ -q          # 45 on a bare clone; the rest skip
+
+git clone --depth 1 https://github.com/kwsch/PKHeX.git reference_PKHeX
+python3 -m pytest tests/ -q          # 73, with the .pkX fixtures
+
 sh tools/fetch_test_saves.sh         # ~40 MB of real saves from public repos
-python3 -m pytest tests/ -q          # 85 with the corpus
+python3 -m pytest tests/ -q          # 85, with the save corpus too
 ```
 
 `PKHEX_REFERENCE` moves the PKHeX checkout, `PKHEXPY_SAVES` moves the save

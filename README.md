@@ -303,15 +303,22 @@ need no fonts installed.
 ## Development
 
 ```sh
-python3 -m pytest tests/ -q          # 73 tests, no downloads needed
-
-sh tools/fetch_test_saves.sh         # ~40 MB of real saves
-python3 -m pytest tests/ -q          # 85, including the corpus
+python3 -m pytest tests/ -q          # 45 tests on a bare clone
 ```
 
-Tests needing the PKHeX fixtures skip when `reference_PKHeX/` is missing; point
-`PKHEX_REFERENCE` elsewhere to move it. Tests needing real saves skip when
-`test-saves/` is missing; `PKHEXPY_SAVES` moves that one.
+The rest of the suite needs files this repository does not vendor, and skips
+without them. To run everything:
+
+```sh
+git clone --depth 1 https://github.com/kwsch/PKHeX.git reference_PKHeX
+python3 -m pytest tests/ -q          # 73, with the .pkX fixtures
+
+sh tools/fetch_test_saves.sh         # ~40 MB of real saves
+python3 -m pytest tests/ -q          # 85, with the save corpus too
+```
+
+`PKHEX_REFERENCE` and `PKHEXPY_SAVES` move those two directories if you keep
+them elsewhere.
 
 The save corpus comes from four public collections, none of it vendored here:
 [ncorgan/pksav-test-saves](https://github.com/ncorgan/pksav-test-saves) for
