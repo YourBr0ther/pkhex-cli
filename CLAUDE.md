@@ -146,13 +146,13 @@ None instead of a plausible wrong answer.
 ## Testing
 
 ```sh
-python3 -m pytest tests/ -q          # 55 on a bare clone; the rest skip
+python3 -m pytest tests/ -q          # 59 on a bare clone; the rest skip
 
 git clone --depth 1 https://github.com/kwsch/PKHeX.git reference_PKHeX
-python3 -m pytest tests/ -q          # 83, with the .pkX fixtures
+python3 -m pytest tests/ -q          # 88, with the .pkX fixtures
 
 sh tools/fetch_test_saves.sh         # ~40 MB of real saves from public repos
-python3 -m pytest tests/ -q          # 113, with the save corpus too
+python3 -m pytest tests/ -q          # 120, with the save corpus too
 ```
 
 `PKHEX_REFERENCE` moves the PKHeX checkout, `PKHEXPY_SAVES` moves the save

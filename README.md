@@ -34,7 +34,8 @@ Party (5)
 pip install git+https://github.com/YourBr0ther/pkhex-cli.git
 ```
 
-Requires Python 3.10 or newer. The repository is `pkhex-cli`; the package it
+Requires Python 3.10 or newer. Not on PyPI yet; see
+[CHANGELOG.md](CHANGELOG.md) for what has landed since the last tag. The repository is `pkhex-cli`; the package it
 installs and the command it provides are both named `pkhexpy`.
 
 ## Usage
@@ -130,8 +131,16 @@ io.write_file("edited.pk9", serialize.from_dict(document))
 }
 ```
 
-A save document wraps entity documents in `party` and `boxes`, alongside
-`trainer` and the save's own `raw_base64`.
+A save document wraps entity documents in `party`, `boxes` and `extra`,
+alongside `trainer` and the save's own `raw_base64`.
+
+`extra` is everything the games keep outside the party and the boxes, which is
+easy to lose track of and easy to leave out. Depending on the generation that
+means the daycare, a Battle Box team, Poké Pelago, the Grand Underground's
+encounter cache, a GTS or Global Link upload, a staged gift, a Surprise Trade
+in transit, the ride legendary, and the Pokémon fused into Kyurem, Necrozma or
+Calyrex. That last group matters most: fuse a legendary and its other half
+exists nowhere else in the file.
 
 Names resolve in ten languages, selected by each Pokémon's stored language.
 Generations 1 to 4 use per-language glyph tables rather than Unicode, so writing
@@ -164,7 +173,7 @@ These numbers come from files this project did not generate.
 | PKHeX .pkX fixtures | 207/207 byte-exact, binary and JSON |
 | Real save files | 60/60 byte-exact, binary and JSON |
 | Games covered | 20, across all nine generations |
-| Pokémon read | 18,513, all with valid checksums |
+| Pokémon read | 18,513 in boxes and parties, plus 141 stored elsewhere |
 
 PKHeX names its fixtures `{Species}{-Form}{★} - {Nickname} - {Checksum}{EncryptionConstant}`,
 so each filename independently states six values. All 207 agree on every one.
@@ -205,13 +214,13 @@ constructed save, so treat it as unverified.
 ## Development
 
 ```sh
-python3 -m pytest tests/ -q          # 55 tests on a bare clone
+python3 -m pytest tests/ -q          # 59 tests on a bare clone
 
 git clone --depth 1 https://github.com/kwsch/PKHeX.git reference_PKHeX
-python3 -m pytest tests/ -q          # 83, with the .pkX fixtures
+python3 -m pytest tests/ -q          # 88, with the .pkX fixtures
 
 sh tools/fetch_test_saves.sh         # ~40 MB of real saves
-python3 -m pytest tests/ -q          # 113, with the save corpus
+python3 -m pytest tests/ -q          # 120, with the save corpus
 ```
 
 `PKHEX_REFERENCE` and `PKHEXPY_SAVES` relocate those two directories.
