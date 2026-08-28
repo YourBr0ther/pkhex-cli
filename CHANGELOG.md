@@ -37,6 +37,11 @@ Notable changes per release. Dates are UTC.
 
 ### Changed
 
+- **Relicensed from AGPL-3.0 to GPL-3.0-or-later.** PKHeX is GPL-3.0, not
+  AGPL-3.0, and this project's license choice rested on that mistake. A
+  GPL-3.0 derivative cannot add the AGPL network clause, so GPL-3.0-or-later
+  is the license upstream actually permits. Nothing here was ever published
+  under the wrong terms.
 - Reading a record out of a buffer, and declaring where extra storage lives,
   each happen one way rather than five and three.
 - The trainer record is declared with descriptors, which makes a field that can

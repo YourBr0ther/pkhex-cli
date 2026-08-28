@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/YourBr0ther/pkhex-cli/actions/workflows/ci.yml"><img src="https://github.com/YourBr0ther/pkhex-cli/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="Python 3.10+">
-  <img src="https://img.shields.io/badge/license-AGPL--3.0-orange" alt="AGPL-3.0">
+  <img src="https://img.shields.io/badge/license-GPL--3.0-orange" alt="GPL-3.0">
   <img src="https://img.shields.io/badge/dependencies-none-brightgreen" alt="No dependencies">
 </p>
 
@@ -242,9 +242,9 @@ The save corpus comes from four public collections, none of it vendored:
 
 ## License
 
-AGPL-3.0. Every byte offset, checksum and encryption routine here comes from
-[PKHeX](https://github.com/kwsch/PKHeX) by Kurt (kwsch), which is AGPL-3.0, so
-this port is too. See [LICENSE](LICENSE).
+GPL-3.0-or-later. Every byte offset, checksum and encryption routine here comes
+from [PKHeX](https://github.com/kwsch/PKHeX) by Kurt (kwsch), which is GPL-3.0,
+so this port is too. See [LICENSE](LICENSE).
 
 Pokémon is a trademark of Nintendo, Creatures Inc. and GAME FREAK Inc. This
 project is not affiliated with them or with PKHeX.

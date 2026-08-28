@@ -198,5 +198,12 @@ script points cairosvg at Homebrew's cairo.
 ## Licensing
 
 Every byte offset, checksum, and encryption routine comes from PKHeX, which is
-AGPL-3.0. This port is AGPL-3.0. Keep it that way, and keep the attribution in
-the README intact.
+GPL-3.0. This port is GPL-3.0-or-later. Keep it that way, and keep the
+attribution in the README intact.
+
+PKHeX is GPL-3.0, not AGPL-3.0. The two are easy to confuse: PKHeX's license
+text mentions Affero three times, but those are GPL-3.0's own section 13,
+"Use with the GNU Affero General Public License", which permits combining with
+AGPL code rather than declaring the work to be AGPL. A GPL-3.0 derivative
+cannot be relicensed under AGPL-3.0, because section 10 forbids adding
+restrictions and the AGPL network clause is one.

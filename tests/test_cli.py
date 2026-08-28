@@ -206,3 +206,18 @@ def test_into_must_match_the_document(real_saves: list[Path], tmp_path: Path,
     assert run("from-json", str(document), "--into", str(second),
                "-o", str(tmp_path / "out.sav")) == 1
     assert "--into needs the file the JSON was exported from" in capsys.readouterr().err
+
+
+def test_the_package_is_licensed_to_match_pkhex() -> None:
+    """PKHeX is GPL-3.0. A derivative cannot add the AGPL network clause, so
+    this must not drift back to AGPL because the two look alike.
+    """
+    root = Path(__file__).resolve().parent.parent
+    license_text = (root / "LICENSE").read_text(encoding="utf-8")
+    assert license_text.lstrip().startswith("GNU GENERAL PUBLIC LICENSE")
+    assert "Remote Network Interaction" not in license_text, "this is the AGPL"
+    assert "13. Use with the GNU Affero General Public License." in license_text
+
+    pyproject = (root / "pyproject.toml").read_text(encoding="utf-8")
+    assert 'license = { text = "GPL-3.0-or-later" }' in pyproject
+    assert "Affero" not in pyproject
