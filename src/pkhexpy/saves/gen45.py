@@ -282,11 +282,28 @@ class SAV5(SaveFile):
     DAYCARE_BLOCK = 50
     DAYCARE_SLOT_SIZE = 4 + crypto.SIZE_5PARTY + 4
 
+    #: The last Pokemon offered to the GTS, and the last uploaded to the
+    #: Global Link. Both are kept party-sized.
+    GTS_BLOCK = 46
+    GLOBAL_LINK_BLOCK = 35
+    #: Black 2 and White 2 store the Pokemon fused into Kyurem here. It exists
+    #: nowhere else in the save, so leaving it out loses a legendary.
+    FUSED_BLOCK: int | None = None
+
     EXTRA_REGIONS: ClassVar[tuple[ExtraRegion, ...]] = (
         ExtraRegion("daycare", 2, DAYCARE_SLOT_SIZE, 4, source=DAYCARE_BLOCK),
         ExtraRegion("battle_box", 6, crypto.SIZE_5STORED,
                     source=BATTLE_BOX_BLOCK),
+        ExtraRegion("gts", 1, 0, 0, source=GTS_BLOCK),
+        ExtraRegion("global_link", 1, 0, 8, source=GLOBAL_LINK_BLOCK),
     )
+
+    def extra_regions(self) -> tuple[ExtraRegion, ...]:
+        regions = self.EXTRA_REGIONS
+        if self.FUSED_BLOCK is not None:
+            regions += (ExtraRegion("fused", 1, 0, 4, source=self.FUSED_BLOCK),)
+        return tuple(r for r in regions
+                     if r.source is not None and len(self.blocks) > r.source)
 
     def _extra_base(self, region: ExtraRegion) -> tuple[bytearray, int]:
         assert region.source is not None
@@ -368,6 +385,7 @@ class SAV5BW(SAV5):
 
 
 class SAV5B2W2(SAV5):
+    FUSED_BLOCK = 43
     KEY = "b2w2"
     GAME = "Black 2/White 2"
     BLOCK_TABLE = "b2w2"

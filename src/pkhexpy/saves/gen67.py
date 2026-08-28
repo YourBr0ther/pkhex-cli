@@ -84,6 +84,11 @@ class SAV67(SaveFile):
     DAYCARE_SLOT_SIZE: int = 4 + crypto.SIZE_6STORED + 4
     DAYCARE_RECORD_OFFSET: int = 8
     BATTLE_BOX_BLOCK: int | None = None
+    #: The last Pokemon offered to the GTS, and the slot a scripted gift is
+    #: staged in, which PKHeX labels after the Old Man who hands one over.
+    GTS_BLOCK: int | None = None
+    GIFT_BLOCK: int | None = None
+    GIFT_OFFSET: int = 0
     #: Kyurem's other half, and in Ultra Sun/Moon the two Necrozma fusions.
     FUSED_BLOCK: int | None = None
     FUSED_COUNT: int = 1
@@ -108,6 +113,13 @@ class SAV67(SaveFile):
             regions.append(ExtraRegion(
                 "battle_box", 6, crypto.SIZE_6STORED,
                 size=crypto.SIZE_6STORED, source=self.BATTLE_BOX_BLOCK))
+        if self.GTS_BLOCK is not None:
+            regions.append(ExtraRegion("gts", 1, 0, size=crypto.SIZE_6STORED,
+                                       source=self.GTS_BLOCK))
+        if self.GIFT_BLOCK is not None:
+            regions.append(ExtraRegion("gift", 1, 0, self.GIFT_OFFSET,
+                                       size=crypto.SIZE_6STORED,
+                                       source=self.GIFT_BLOCK))
         return tuple(regions)
 
     def _extra_base(self, region: ExtraRegion) -> tuple[bytearray, int]:
@@ -247,6 +259,9 @@ class SAV6XY(SAV67):
     BATTLE_BOX_BLOCK = 13
     FUSED_BLOCK = 22
     DAYCARE_BLOCK = 38
+    GTS_BLOCK = 28
+    GIFT_BLOCK = 42
+    GIFT_OFFSET = 0x90
     PARTY_FIXED_OFFSET = 0x14200
     BOX_FIXED_OFFSET = 0x22600
 
@@ -269,6 +284,9 @@ class SAV6AO(SAV67):
     BATTLE_BOX_BLOCK = 13
     FUSED_BLOCK = 22
     DAYCARE_BLOCK = 38
+    GTS_BLOCK = 28
+    GIFT_BLOCK = 42
+    GIFT_OFFSET = 0xC4
     PARTY_FIXED_OFFSET = 0x14200
     BOX_FIXED_OFFSET = 0x33000
 

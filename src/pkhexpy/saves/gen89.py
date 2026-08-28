@@ -302,10 +302,17 @@ class SAV9SV(SAV89):
         ExtraRegion("surprise_trade_sent", 1, 0x158, 0x198, source=0xB2FDF384),
         ExtraRegion("surprise_trade_received", 1, 0x158, 0x02C,
                     source=0xB2FDF384),
+        # Koraidon or Miraidon, parked in the box block past the last box.
+        ExtraRegion("ride_legend", 1, 0, 32 * 30 * 0x158, party_format=True,
+                    source=0x0D66012C),
     )
 
 
 class SAV9ZA(SAV9SV):
+    #: Z-A keeps its own extra storage, which this port does not read yet, and
+    #: none of Scarlet and Violet's block keys carry over.
+    EXTRA_REGIONS: ClassVar[tuple[ExtraRegion, ...]] = ()
+
     """Legends: Z-A.
 
     Shares Scarlet/Violet's block keys but not its storage geometry: every slot

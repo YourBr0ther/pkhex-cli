@@ -625,3 +625,32 @@ def test_gameboy_special_stat_is_writable_under_both_names(
     assert entity.ev_spd == entity.ev_spc == 111
     entity.ev_spd = 222
     assert entity.ev_spa == entity.ev_spc == 222
+
+
+def test_version_exclusive_extra_slots_hold_the_right_species(
+        real_saves: list[Path]) -> None:
+    """Some extra storage can only ever hold one species, which makes it a
+    check on the offset that no other slot gives.
+
+    A wrong offset would have to land on exactly the right Pokemon to pass.
+    """
+    #: Save key to the only species that slot can hold in that game.
+    expected = {
+        ("sv", "ride_legend"): {"Koraidon", "Miraidon"},
+        ("b2w2", "fused"): {"Zekrom", "Reshiram"},
+    }
+    checked = 0
+    for path in real_saves:
+        try:
+            sav = saves.from_bytes(path.read_bytes())
+        except saves.SaveFormatError:
+            continue
+        for slot, entity in sav.iter_extra():
+            allowed = expected.get((sav.KEY, slot.kind))
+            if allowed is None:
+                continue
+            assert entity.species_name in allowed, (
+                f"{path.name} {slot.name}: {entity.species_name} "
+                f"is not one of {sorted(allowed)}")
+            checked += 1
+    assert checked >= 3, f"only {checked} version-exclusive slots were seen"
