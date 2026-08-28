@@ -12,7 +12,7 @@ from typing import ClassVar
 from ..binio import read_u16, read_u32, write_u16, write_u32
 from ..pkm.formats import PA8, PA9, PK8, PK9
 from . import swish
-from .base import ExtraSlot, SaveFile
+from .base import ExtraRegion, SaveFile
 from .swish import SCBlock
 
 
@@ -107,32 +107,19 @@ class SAV89(SaveFile):
                 f"{self.GAME} has no party count byte to update")
         data[index] = count
 
-    #: Blocks holding Pokemon outside the party and boxes, keyed by block id.
-    #: EXTRA_BLOCKS maps a slot kind to (key, count, stride, record offset).
-    EXTRA_BLOCKS: ClassVar[dict[str, tuple[int, int, int, int]]] = {}
+    def extra_regions(self) -> tuple[ExtraRegion, ...]:
+        # A block is absent when the game predates the update that added it,
+        # such as Calyrex arriving with the Crown Tundra.
+        return tuple(region for region in self.EXTRA_REGIONS
+                     if self.block(region.source) is not None)
 
-    def extra_slots(self) -> tuple[ExtraSlot, ...]:
-        slots: list[ExtraSlot] = []
-        for kind, (key, count, _stride, _start) in self.EXTRA_BLOCKS.items():
-            if self.block(key) is None:
-                continue
-            slots += [ExtraSlot(kind, i, True) for i in range(count)]
-        return tuple(slots)
+    def _extra_base(self, region: ExtraRegion) -> tuple[bytearray, int]:
+        assert region.source is not None
+        return self.block_data(region.source), 0
 
-    def _extra_region(self, slot: ExtraSlot) -> tuple[bytearray, int, int]:
-        key, _count, stride, start = self.EXTRA_BLOCKS[slot.kind]
-        data = self.block_data(key)
-        return data, start + slot.index * stride, self.SIZE_BOXSLOT
-
-    def _read_from(self, buffer: bytearray, offset: int, size: int):
-        raw = bytes(buffer[offset:offset + size])
-        if len(raw) < size or not self.slot_present(raw):
-            return None
-        entity = self.ENTITY(self.ENTITY.decrypt_buffer(raw))
-        return entity if entity.species else None
 
     def get_box_slot(self, box: int, slot: int):
-        return self._read_from(self.box_data,
+        return self.read_slot(self.box_data,
                                self.box_slot_offset(box, slot), self.SIZE_BOXSLOT)
 
     def set_box_slot(self, box: int, slot: int, entity) -> None:
@@ -141,7 +128,7 @@ class SAV89(SaveFile):
             entity, self.SIZE_BOXSLOT)
 
     def get_party_slot(self, slot: int):
-        return self._read_from(self.party_data,
+        return self.read_slot(self.party_data,
                                self.party_offset(slot), self.SIZE_PARTY_SLOT)
 
     def _write_party_slot(self, slot: int, entity) -> None:
@@ -284,12 +271,14 @@ class SAV8SWSH(SAV89):
     #: Kyurem and the two Necrozma fusions share one block; Calyrex, added by
     #: the Crown Tundra, has its own. Each daycare struct is a flag byte then
     #: the record, and there are two daycares of two slots each.
-    EXTRA_BLOCKS: ClassVar[dict[str, tuple[int, int, int, int]]] = {
-        "fused": (0xC0DE5C5F, 3, 0x158, 0),
-        "fused_calyrex": (0xC37F267B, 1, 0x158, 0),
-        "daycare": (0x2D6FBA6A, 2, 1 + 0x148, 1),
-        "daycare2": (0x2D6FBA6A, 2, 1 + 0x148, 1 + 2 * (1 + 0x148) + 0x26),
-    }
+    EXTRA_REGIONS: ClassVar[tuple[ExtraRegion, ...]] = (
+        ExtraRegion("fused", 3, 0x158, party_format=True, source=0xC0DE5C5F),
+        ExtraRegion("fused_calyrex", 1, 0x158, party_format=True,
+                    source=0xC37F267B),
+        ExtraRegion("daycare", 2, 1 + 0x148, 1, source=0x2D6FBA6A),
+        ExtraRegion("daycare2", 2, 1 + 0x148, 1 + 2 * (1 + 0x148) + 0x26,
+                    source=0x2D6FBA6A),
+    )
 
 
 class SAV8LA(SAV89):
@@ -330,14 +319,19 @@ class SAV9SV(SAV89):
     PLAY_TIME_WIDE = True
     #: Each fusion gets its own block. Surprise Trade keeps two records: the
     #: one uploaded and the one received.
-    EXTRA_BLOCKS: ClassVar[dict[str, tuple[int, int, int, int]]] = {
-        "fused_calyrex": (0x916BCA9E, 1, 0x158, 0),
-        "fused_kyurem": (0x7E0ADF89, 1, 0x158, 0),
-        "fused_necrozma_solgaleo": (0x203FF693, 1, 0x158, 0),
-        "fused_necrozma_lunala": (0x5369FC39, 1, 0x158, 0),
-        "surprise_trade_sent": (0xB2FDF384, 1, 0x158, 0x198),
-        "surprise_trade_received": (0xB2FDF384, 1, 0x158, 0x02C),
-    }
+    EXTRA_REGIONS: ClassVar[tuple[ExtraRegion, ...]] = (
+        ExtraRegion("fused_calyrex", 1, 0x158, party_format=True,
+                    source=0x916BCA9E),
+        ExtraRegion("fused_kyurem", 1, 0x158, party_format=True,
+                    source=0x7E0ADF89),
+        ExtraRegion("fused_necrozma_solgaleo", 1, 0x158, party_format=True,
+                    source=0x203FF693),
+        ExtraRegion("fused_necrozma_lunala", 1, 0x158, party_format=True,
+                    source=0x5369FC39),
+        ExtraRegion("surprise_trade_sent", 1, 0x158, 0x198, source=0xB2FDF384),
+        ExtraRegion("surprise_trade_received", 1, 0x158, 0x02C,
+                    source=0xB2FDF384),
+    )
 
 
 class SAV9ZA(SAV9SV):

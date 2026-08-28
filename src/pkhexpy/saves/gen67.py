@@ -16,7 +16,7 @@ from ..binio import read_u16, read_u32, write_u16, write_u32
 from ..data import DATA_DIR
 from ..pkm.formats import PB7, PK6, PK7
 from . import checksums
-from .base import ExtraSlot, SaveFile
+from .base import ExtraRegion, SaveFile
 
 #: Offset of the block-info table within the metadata chunk.
 BLOCK_TABLE_OFFSET = 0x14
@@ -88,32 +88,30 @@ class SAV67(SaveFile):
     FUSED_COUNT: int = 1
     FUSED_PARTY_SIZED: bool = False
 
-    def extra_slots(self) -> tuple[ExtraSlot, ...]:
-        slots: list[ExtraSlot] = []
+    def extra_regions(self) -> tuple[ExtraRegion, ...]:
+        regions: list[ExtraRegion] = []
         if self.DAYCARE_BLOCK is not None:
-            slots += [ExtraSlot("daycare", i)
-                      for i in range(self.DAYCARE_SLOT_COUNT)]
+            regions.append(ExtraRegion(
+                "daycare", self.DAYCARE_SLOT_COUNT, self.DAYCARE_SLOT_SIZE,
+                self.DAYCARE_RECORD_OFFSET, size=crypto.SIZE_6STORED,
+                source=self.DAYCARE_BLOCK))
         if self.FUSED_BLOCK is not None:
-            slots += [ExtraSlot("fused", i, self.FUSED_PARTY_SIZED)
-                      for i in range(self.FUSED_COUNT)]
+            # The stride is the party-sized struct, but only the stored part
+            # of each is a record.
+            stride = (crypto.SIZE_6PARTY if self.FUSED_PARTY_SIZED
+                      else crypto.SIZE_6STORED)
+            regions.append(ExtraRegion(
+                "fused", self.FUSED_COUNT, stride, party_format=True,
+                size=crypto.SIZE_6STORED, source=self.FUSED_BLOCK))
         if self.BATTLE_BOX_BLOCK is not None:
-            slots += [ExtraSlot("battle_box", i) for i in range(6)]
-        return tuple(slots)
+            regions.append(ExtraRegion(
+                "battle_box", 6, crypto.SIZE_6STORED,
+                size=crypto.SIZE_6STORED, source=self.BATTLE_BOX_BLOCK))
+        return tuple(regions)
 
-    def _extra_region(self, slot: ExtraSlot) -> tuple[bytearray, int, int]:
-        if slot.kind == "daycare":
-            assert self.DAYCARE_BLOCK is not None
-            start = self.block_offset(self.DAYCARE_BLOCK)
-            offset = start + slot.index * self.DAYCARE_SLOT_SIZE
-            return self.data, offset + self.DAYCARE_RECORD_OFFSET, crypto.SIZE_6STORED
-        if slot.kind == "fused":
-            assert self.FUSED_BLOCK is not None
-            size = crypto.SIZE_6PARTY if slot.party_format else crypto.SIZE_6STORED
-            start = self.block_offset(self.FUSED_BLOCK)
-            return self.data, start + slot.index * size, crypto.SIZE_6STORED
-        assert self.BATTLE_BOX_BLOCK is not None
-        start = self.block_offset(self.BATTLE_BOX_BLOCK)
-        return self.data, start + slot.index * crypto.SIZE_6STORED, crypto.SIZE_6STORED
+    def _extra_base(self, region: ExtraRegion) -> tuple[bytearray, int]:
+        assert region.source is not None
+        return self.data, self.block_offset(region.source)
 
     def block_offset(self, index: int) -> int:
         return self.blocks[index]["offset"]

@@ -13,7 +13,7 @@ import hashlib
 
 from ..binio import read_u16, read_u32, write_u16, write_u32
 from ..pkm.formats import PB8
-from .base import ExtraSlot, SaveFile
+from .base import ExtraRegion, SaveFile
 
 #: The four shipped save sizes, one per game revision.
 SIZES = (0xE9828, 0xEDC20, 0xEED8C, 0xEF0A4)
@@ -62,18 +62,13 @@ class SAV8BS(SaveFile):
     UNDERGROUND_SLOT_OFFSET = 0x4C
     UNDERGROUND_COUNT = 15
 
-    EXTRA_SLOTS: ClassVar[tuple[ExtraSlot, ...]] = (
-        ExtraSlot("daycare", 0, True), ExtraSlot("daycare", 1, True),
-        *(ExtraSlot("underground", i, True) for i in range(UNDERGROUND_COUNT)),
+    EXTRA_REGIONS: ClassVar[tuple[ExtraRegion, ...]] = (
+        ExtraRegion("daycare", 2, SIZE_PARTY_SLOT, DAYCARE_BASE,
+                    party_format=True),
+        ExtraRegion("underground", UNDERGROUND_COUNT, SIZE_PARTY_SLOT,
+                    UNDERGROUND_BASE + UNDERGROUND_SLOT_OFFSET,
+                    party_format=True),
     )
-
-    def _extra_region(self, slot: ExtraSlot) -> tuple[bytearray, int, int]:
-        if slot.kind == "underground":
-            start = (self.UNDERGROUND_BASE + self.UNDERGROUND_SLOT_OFFSET
-                     + slot.index * self.SIZE_PARTY_SLOT)
-        else:
-            start = self.DAYCARE_BASE + slot.index * self.SIZE_PARTY_SLOT
-        return self.data, start, self.SIZE_BOXSLOT
     PLAY_TIME_BASE = 0x79C04
 
     # --- storage -------------------------------------------------------------

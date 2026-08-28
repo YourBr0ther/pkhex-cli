@@ -53,6 +53,27 @@ class ExtraSlot:
         return f"{self.kind}/{self.index}"
 
 
+@dataclass(frozen=True)
+class ExtraRegion:
+    """One run of extra slots: where it starts, how many, how far apart.
+
+    Declaring the layout as data rather than as branching keeps the slot list
+    and the offsets from drifting apart, since both come from this one table.
+    """
+
+    kind: str
+    count: int
+    stride: int
+    start: int = 0
+    party_format: bool = False
+    #: Record size, when it differs from a box slot. Let's Go boxes are party
+    #: sized but its daycare keeps a stored record.
+    size: int | None = None
+    #: How the generation finds the buffer: a block index, a block key, or None
+    #: when ``start`` is already an offset into the save.
+    source: int | None = None
+
+
 class SaveFile:
     """One save file."""
 
@@ -203,28 +224,38 @@ class SaveFile:
     # --- storage outside the party and boxes ---------------------------------
 
     #: Where a save keeps Pokemon that are neither in the party nor in a box.
-    #: Each generation declares its own; see ``_extra_region``.
-    EXTRA_SLOTS: ClassVar[tuple[ExtraSlot, ...]] = ()
+    EXTRA_REGIONS: ClassVar[tuple[ExtraRegion, ...]] = ()
+
+    def extra_regions(self) -> tuple[ExtraRegion, ...]:
+        """The regions this particular save has, which can depend on the game
+        revision, so subclasses may narrow the class-level table."""
+        return self.EXTRA_REGIONS
+
+    def _extra_base(self, region: ExtraRegion) -> tuple[bytearray, int]:
+        """The buffer a region lives in, and where the region starts in it."""
+        return self.data, 0
 
     def extra_slots(self) -> tuple[ExtraSlot, ...]:
-        """The extra storage this save actually has, which can depend on the
-        game revision, so subclasses may narrow the class-level list."""
-        return self.EXTRA_SLOTS
+        return tuple(ExtraSlot(region.kind, index, region.party_format)
+                     for region in self.extra_regions()
+                     for index in range(region.count))
 
-    def _extra_region(self, slot: ExtraSlot) -> tuple[bytearray, int, int]:
-        """The buffer, offset and record size one extra slot occupies."""
-        raise NotImplementedError(
-            f"{self.GAME} declares {slot.kind} but cannot locate it")
-
-    def _find_extra(self, kind: str, index: int) -> ExtraSlot:
-        for slot in self.extra_slots():
-            if slot.kind == kind and slot.index == index:
-                return slot
+    def _find_region(self, kind: str, index: int) -> ExtraRegion:
+        for region in self.extra_regions():
+            if region.kind == kind and 0 <= index < region.count:
+                return region
         raise KeyError(f"{self.GAME} has no {kind} slot {index}")
+
+    def _extra_region(self, kind: str, index: int) -> tuple[bytearray, int, int]:
+        """The buffer, offset and record size one extra slot occupies."""
+        region = self._find_region(kind, index)
+        buffer, base = self._extra_base(region)
+        offset = base + region.start + index * region.stride
+        return buffer, offset, region.size or self.SIZE_BOXSLOT
 
     def get_extra_slot(self, kind: str, index: int = 0):
         """The Pokemon in one extra slot, or None when it is empty."""
-        buffer, offset, size = self._extra_region(self._find_extra(kind, index))
+        buffer, offset, size = self._extra_region(kind, index)
         return self._read_extra(buffer, offset, size)
 
     def _read_extra(self, buffer, offset: int, size: int):
@@ -235,7 +266,7 @@ class SaveFile:
         Pokemon and then whatever the game last had in that memory, which
         passes a presence check and decodes to a nonsense species.
         """
-        entity = self._read_slot(buffer, offset, size)
+        entity = self.read_slot(buffer, offset, size)
         if entity is None:
             return None
         if not getattr(entity, "checksum_valid", True):
@@ -243,14 +274,14 @@ class SaveFile:
         return entity if entity.species_name is not None else None
 
     def set_extra_slot(self, kind: str, index: int, entity) -> None:
-        buffer, offset, size = self._extra_region(self._find_extra(kind, index))
+        buffer, offset, size = self._extra_region(kind, index)
         buffer[offset:offset + size] = self._slot_bytes(entity, size)
 
     def iter_extra(self) -> Iterator[tuple[ExtraSlot, Any]]:
         """Yield (slot, entity) for every occupied slot outside party and boxes."""
         for slot in self.extra_slots():
             try:
-                buffer, offset, size = self._extra_region(slot)
+                buffer, offset, size = self._extra_region(slot.kind, slot.index)
             except (NotImplementedError, KeyError, IndexError):
                 continue
             entity = self._read_extra(buffer, offset, size)
@@ -278,24 +309,22 @@ class SaveFile:
         # Gen3 marks an occupied slot with the has-species flag.
         return (raw[0x13] & 0xFB) == 2
 
-    def _read_slot(self, buffer, offset: int, size: int):
-        """Decode one record out of any buffer, or None when the slot is empty."""
+    def read_slot(self, buffer, offset: int, size: int):
+        """Decode one record out of any buffer, or None when the slot is empty.
+
+        Every read of a Pokemon goes through here: party, box, and the storage
+        outside both. The generations differ only in which buffer they hand it.
+        """
         raw = bytes(buffer[offset:offset + size])
         if len(raw) < size or not self.slot_present(raw):
             return None
         entity = self.ENTITY(self.ENTITY.decrypt_buffer(raw))
         return entity if entity.species else None
 
-    def _read_entity(self, offset: int, size: int):
-        raw = bytes(self.data[offset:offset + size])
-        if not self.slot_present(raw):
-            return None
-        entity = self.ENTITY(self.ENTITY.decrypt_buffer(raw))
-        return entity if entity.species else None
-
     def get_box_slot(self, box: int, slot: int):
         """The entity in one box slot, or None when the slot is empty."""
-        return self._read_entity(self.box_slot_offset(box, slot), self.SIZE_BOXSLOT)
+        return self.read_slot(self.data, self.box_slot_offset(box, slot),
+                              self.SIZE_BOXSLOT)
 
     def _check_entity(self, entity) -> None:
         """Reject an entity from another generation.
@@ -326,7 +355,8 @@ class SaveFile:
             entity, self.SIZE_BOXSLOT)
 
     def get_party_slot(self, slot: int):
-        return self._read_entity(self.party_offset(slot), self.SIZE_PARTY_SLOT)
+        return self.read_slot(self.data, self.party_offset(slot),
+                              self.SIZE_PARTY_SLOT)
 
     def _write_party_slot(self, slot: int, entity) -> None:
         """Put an entity in a party slot without touching the party size."""

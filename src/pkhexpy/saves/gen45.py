@@ -18,7 +18,7 @@ from ..binio import read_u16, read_u32, write_u16, write_u32
 from ..data import DATA_DIR
 from ..pkm.formats import PK4, PK5
 from . import checksums
-from .base import ExtraSlot, SaveFile
+from .base import ExtraRegion, SaveFile
 
 SIZE_G4RAW = 0x80000
 SIZE_G5RAW = 0x80000
@@ -112,17 +112,10 @@ class SAV4(SaveFile):
     def _set_party_count(self, count: int) -> None:
         self.data[self.general_base + self.PARTY_OFFSET - 4] = count
 
-    def _slot(self, base: int, offset: int, size: int):
-        start = base + offset
-        raw = bytes(self.data[start:start + size])
-        if not self.slot_present(raw):
-            return None
-        entity = PK4(PK4.decrypt_buffer(raw))
-        return entity if entity.species else None
-
     def get_box_slot(self, box: int, slot: int):
-        return self._slot(self.storage_base, self.box_slot_offset(box, slot),
-                          self.SIZE_BOXSLOT)
+        return self.read_slot(self.data,
+                              self.storage_base + self.box_slot_offset(box, slot),
+                              self.SIZE_BOXSLOT)
 
     def set_box_slot(self, box: int, slot: int, entity) -> None:
         start = self.storage_base + self.box_slot_offset(box, slot)
@@ -130,8 +123,9 @@ class SAV4(SaveFile):
             entity, self.SIZE_BOXSLOT)
 
     def get_party_slot(self, slot: int):
-        return self._slot(self.general_base, self.party_offset(slot),
-                          self.SIZE_PARTY_SLOT)
+        return self.read_slot(self.data,
+                              self.general_base + self.party_offset(slot),
+                              self.SIZE_PARTY_SLOT)
 
     def _write_party_slot(self, slot: int, entity) -> None:
         start = self.general_base + self.party_offset(slot)
@@ -147,22 +141,17 @@ class SAV4(SaveFile):
     #: HG/SS only: the Pokemon walking in a Pokewalker.
     WALKER_OFFSET: int | None = None
 
-    def extra_slots(self) -> tuple[ExtraSlot, ...]:
-        slots: list[ExtraSlot] = []
+    def extra_regions(self) -> tuple[ExtraRegion, ...]:
+        regions: list[ExtraRegion] = []
         if self.DAYCARE_OFFSET is not None:
-            slots += [ExtraSlot("daycare", 0), ExtraSlot("daycare", 1)]
+            regions.append(ExtraRegion("daycare", 2, self.DAYCARE_SLOT_SIZE,
+                                       self.DAYCARE_OFFSET))
         if self.WALKER_OFFSET is not None:
-            slots.append(ExtraSlot("pokewalker", 0))
-        return tuple(slots)
+            regions.append(ExtraRegion("pokewalker", 1, 0, self.WALKER_OFFSET))
+        return tuple(regions)
 
-    def _extra_region(self, slot: ExtraSlot) -> tuple[bytearray, int, int]:
-        if slot.kind == "pokewalker":
-            assert self.WALKER_OFFSET is not None
-            start = self.WALKER_OFFSET
-        else:
-            assert self.DAYCARE_OFFSET is not None
-            start = self.DAYCARE_OFFSET + slot.index * self.DAYCARE_SLOT_SIZE
-        return self.data, self.general_base + start, crypto.SIZE_4STORED
+    def _extra_base(self, region: ExtraRegion) -> tuple[bytearray, int]:
+        return self.data, self.general_base
 
     def _general_u16(self, offset: int) -> int:
         return read_u16(self.data, self.general_base + offset)
@@ -345,18 +334,15 @@ class SAV5(SaveFile):
     DAYCARE_BLOCK = 50
     DAYCARE_SLOT_SIZE = 4 + crypto.SIZE_5PARTY + 4
 
-    EXTRA_SLOTS: ClassVar[tuple[ExtraSlot, ...]] = (
-        ExtraSlot("daycare", 0), ExtraSlot("daycare", 1),
-        *(ExtraSlot("battle_box", i) for i in range(6)),
+    EXTRA_REGIONS: ClassVar[tuple[ExtraRegion, ...]] = (
+        ExtraRegion("daycare", 2, DAYCARE_SLOT_SIZE, 4, source=DAYCARE_BLOCK),
+        ExtraRegion("battle_box", 6, crypto.SIZE_5STORED,
+                    source=BATTLE_BOX_BLOCK),
     )
 
-    def _extra_region(self, slot: ExtraSlot) -> tuple[bytearray, int, int]:
-        if slot.kind == "battle_box":
-            start = self.blocks[self.BATTLE_BOX_BLOCK]["offset"]
-            return self.data, start + slot.index * crypto.SIZE_5STORED, crypto.SIZE_5STORED
-        start = self.blocks[self.DAYCARE_BLOCK]["offset"]
-        offset = start + slot.index * self.DAYCARE_SLOT_SIZE + 4
-        return self.data, offset, crypto.SIZE_5STORED
+    def _extra_base(self, region: ExtraRegion) -> tuple[bytearray, int]:
+        assert region.source is not None
+        return self.data, self.blocks[region.source]["offset"]
 
     # --- trainer -------------------------------------------------------------
 

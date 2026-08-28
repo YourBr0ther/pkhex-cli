@@ -8,13 +8,12 @@ whichever copy saved most recently.
 
 from __future__ import annotations
 
-from typing import ClassVar
 
 from .. import crypto
 from ..binio import read_i16, read_u16, read_u32, write_u16, write_u32
 from ..pkm.formats import PK3
 from . import checksums
-from .base import ExtraSlot, SaveFile
+from .base import ExtraRegion, SaveFile
 
 SIZE_SECTOR = 0x1000
 SIZE_SECTOR_USED = 0xF80
@@ -111,17 +110,14 @@ class SAV3(SaveFile):
     #: held mail and the experience earned while deposited.
     DAYCARE_OFFSET: int | None = None
     DAYCARE_SLOT_SIZE: int = crypto.SIZE_3STORED + 0x3C
-    EXTRA_SLOTS: ClassVar[tuple[ExtraSlot, ...]] = (
-        ExtraSlot("daycare", 0), ExtraSlot("daycare", 1),
-    )
+    def extra_regions(self) -> tuple[ExtraRegion, ...]:
+        if self.DAYCARE_OFFSET is None:
+            return ()
+        return (ExtraRegion("daycare", 2, self.DAYCARE_SLOT_SIZE,
+                            self.DAYCARE_OFFSET),)
 
-    def extra_slots(self) -> tuple[ExtraSlot, ...]:
-        return self.EXTRA_SLOTS if self.DAYCARE_OFFSET is not None else ()
-
-    def _extra_region(self, slot: ExtraSlot) -> tuple[bytearray, int, int]:
-        assert self.DAYCARE_OFFSET is not None
-        offset = self.DAYCARE_OFFSET + slot.index * self.DAYCARE_SLOT_SIZE
-        return self.large, offset, crypto.SIZE_3STORED
+    def _extra_base(self, region: ExtraRegion) -> tuple[bytearray, int]:
+        return self.large, 0
 
     PARTY_COUNT_OFFSET: int = 0x234
     PARTY_OFFSET: int = 0x238
@@ -180,12 +176,8 @@ class SAV3(SaveFile):
         self.large[self.PARTY_COUNT_OFFSET] = count
 
     def get_box_slot(self, box: int, slot: int):
-        offset = self.box_slot_offset(box, slot)
-        raw = bytes(self.storage[offset:offset + self.SIZE_BOXSLOT])
-        if not self.slot_present(raw):
-            return None
-        entity = PK3(PK3.decrypt_buffer(raw))
-        return entity if entity.species else None
+        return self.read_slot(self.storage, self.box_slot_offset(box, slot),
+                              self.SIZE_BOXSLOT)
 
     def set_box_slot(self, box: int, slot: int, entity) -> None:
         offset = self.box_slot_offset(box, slot)
@@ -193,12 +185,8 @@ class SAV3(SaveFile):
             entity, self.SIZE_BOXSLOT)
 
     def get_party_slot(self, slot: int):
-        offset = self.party_offset(slot)
-        raw = bytes(self.large[offset:offset + self.SIZE_PARTY_SLOT])
-        if not self.slot_present(raw):
-            return None
-        entity = PK3(PK3.decrypt_buffer(raw))
-        return entity if entity.species else None
+        return self.read_slot(self.large, self.party_offset(slot),
+                              self.SIZE_PARTY_SLOT)
 
     def _write_party_slot(self, slot: int, entity) -> None:
         offset = self.party_offset(slot)
