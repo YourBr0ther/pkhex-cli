@@ -309,9 +309,21 @@ class SAV9SV(SAV89):
 
 
 class SAV9ZA(SAV9SV):
-    #: Z-A keeps its own extra storage, which this port does not read yet, and
-    #: none of Scarlet and Violet's block keys carry over.
-    EXTRA_REGIONS: ClassVar[tuple[ExtraRegion, ...]] = ()
+    #: Z-A keeps far more Pokemon outside its boxes than any earlier game: a
+    #: cache of shiny encounters and a long list of staged event gifts. Each
+    #: record sits eight bytes into its slot, behind a hash.
+    #:
+    #: Unverified. No public Z-A save exists to read, so these offsets come
+    #: from PKHeX alone, like the rest of this game's geometry. Anything they
+    #: produce still has to pass its own checksum and name a real species.
+    EXTRA_REGIONS: ClassVar[tuple[ExtraRegion, ...]] = (
+        ExtraRegion("shiny_cache", 10, 0x1F0, 8, party_format=True,
+                    source=0xF3A8569D),
+        ExtraRegion("event_gift", 128, 0x1A8, 8, party_format=True,
+                    source=0x654FCD1E),
+        ExtraRegion("fused_calyrex", 1, 0x158, party_format=True,
+                    source=0x916BCA9E),
+    )
 
     """Legends: Z-A.
 

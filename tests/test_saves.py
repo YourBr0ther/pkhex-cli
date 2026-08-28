@@ -654,3 +654,18 @@ def test_version_exclusive_extra_slots_hold_the_right_species(
                 f"is not one of {sorted(allowed)}")
             checked += 1
     assert checked >= 3, f"only {checked} version-exclusive slots were seen"
+
+
+def test_legends_za_declares_its_own_extra_storage() -> None:
+    """Z-A shares Scarlet and Violet's box and party keys but none of the
+    keys for storage outside them, so inheriting SV's table would have pointed
+    at blocks Z-A does not have."""
+    sv_kinds = {region.kind for region in gen89.SAV9SV.EXTRA_REGIONS}
+    za_kinds = {region.kind for region in gen89.SAV9ZA.EXTRA_REGIONS}
+    assert "ride_legend" in sv_kinds and "ride_legend" not in za_kinds
+    assert {"shiny_cache", "event_gift"} <= za_kinds
+    sv_keys = {region.source for region in gen89.SAV9SV.EXTRA_REGIONS}
+    za_keys = {region.source for region in gen89.SAV9ZA.EXTRA_REGIONS}
+    shared = sv_keys & za_keys
+    assert shared == {0x916BCA9E}, (
+        f"only the Calyrex fusion key is shared, found {shared}")
