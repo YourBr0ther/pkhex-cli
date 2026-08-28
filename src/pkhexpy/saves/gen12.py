@@ -254,6 +254,22 @@ class SAVGB(SaveFile):
         self._pack(self.PARTY_OFFSET, self.PARTY_SLOT_COUNT,
                    self.SIZE_PARTY_SLOT, slot, entity)
 
+    def remove_party_slot(self, slot: int) -> None:
+        """Clear a party slot. ``_rebuild_list`` closes the gap and recounts.
+
+        The generic version shuffles the slots itself and then writes a count
+        byte, which a packed list does not have in the same place. Packing one
+        slot as empty does the whole job here.
+        """
+        self.set_party_slot(slot, None)
+
+    def _set_party_count(self, count: int) -> None:
+        # The count is the first byte of the list, and _rebuild_list is the only
+        # thing that should set it: it has just worked out which slots are
+        # occupied. Declaring the method keeps _require_resizable_party from
+        # deciding this format cannot resize its party, which it plainly can.
+        self.data[self.PARTY_OFFSET] = count
+
     # --- daycare -------------------------------------------------------------
 
     #: Offset of the daycare region, or None when this variant is unmapped.

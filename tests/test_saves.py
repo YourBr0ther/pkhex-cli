@@ -739,3 +739,29 @@ def test_gen4_reads_a_real_daycare(real_saves: list[Path]) -> None:
             assert entity.original_trainer_name
             checked += 1
     assert checked, "no Gen4 save in the corpus had extra storage occupied"
+
+
+def test_removing_a_party_member_works_the_same_two_ways(
+        real_saves: list[Path]) -> None:
+    """remove_party_slot used to raise on Gen1/2 while set_party_slot(slot,
+    None) did the job, because the packed-list override never declared that it
+    could resize the party."""
+    checked = 0
+    for path in real_saves:
+        try:
+            sav = saves.from_bytes(path.read_bytes())
+        except saves.SaveFormatError:
+            continue
+        if sav.GENERATION > 2 or sav.party_count < 2:
+            continue
+        raw = path.read_bytes()
+        removed = saves.from_bytes(raw)
+        removed.remove_party_slot(0)
+
+        cleared = saves.from_bytes(raw)
+        cleared.set_party_slot(0, None)
+
+        assert removed.party_count == sav.party_count - 1, path.name
+        assert bytes(removed.data) == bytes(cleared.data), path.name
+        checked += 1
+    assert checked, "no Gen1/2 save in the corpus had a party to shorten"
