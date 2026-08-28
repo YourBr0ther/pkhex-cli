@@ -14,6 +14,7 @@ from pkhexpy.binio import write_u16, write_u32
 from pkhexpy.pkm import formats
 from pkhexpy.pkm import io as entity_io
 from pkhexpy.saves import base, gen3, gen89, swish
+from pkhexpy.saves.gen45 import SIZE_G4RAW
 from pkhexpy.saves.gen3 import FOOTER_COUNTER, FOOTER_ID, SIZE_MAIN, SIZE_SECTOR
 from pkhexpy.saves.swish import SCBlock, SCTypeCode
 
@@ -699,3 +700,42 @@ def test_a_size_shared_with_a_supported_game_names_both() -> None:
 def test_an_unrecognized_size_still_says_so() -> None:
     with pytest.raises(saves.SaveFormatError, match="no save format matches"):
         saves.from_bytes(bytes(12345))
+
+
+def test_gen4_declares_its_extra_storage() -> None:
+    """Gen4 was the only generation reading nothing outside party and boxes.
+
+    The daycare offsets were sitting in the class bodies unused, so a Pokemon
+    left with the daycare man was invisible.
+    """
+    from pkhexpy.saves.gen45 import SAV4DP, SAV4HGSS, SAV4Pt
+
+    def kinds(cls) -> set[str]:
+        return {region.kind for region in cls(bytearray(SIZE_G4RAW)).extra_regions()}
+
+    for cls in (SAV4DP, SAV4Pt, SAV4HGSS):
+        assert "daycare" in kinds(cls), cls.__name__
+    # Only HG/SS sends a Pokemon out on a Pokewalker course.
+    assert "pokewalker" in kinds(SAV4HGSS)
+    assert "pokewalker" not in kinds(SAV4DP)
+
+
+def test_gen4_reads_a_real_daycare(real_saves: list[Path]) -> None:
+    """The trainer name on the daycare occupant should match the save's own,
+    which is what makes the offset and record size credible rather than a
+    slice of neighbouring bytes that happens to decode."""
+    checked = 0
+    for path in real_saves:
+        try:
+            sav = saves.from_bytes(path.read_bytes())
+        except saves.SaveFormatError:
+            continue
+        if sav.GENERATION != 4:
+            continue
+        for slot, entity in sav.iter_extra():
+            assert slot.kind in ("daycare", "pokewalker")
+            assert entity.species_name
+            assert 1 <= entity.current_level <= 100
+            assert entity.original_trainer_name
+            checked += 1
+    assert checked, "no Gen4 save in the corpus had extra storage occupied"

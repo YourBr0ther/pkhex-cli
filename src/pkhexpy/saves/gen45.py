@@ -78,6 +78,29 @@ class SAV4(SaveFile):
     #: chunk out to 0x1000.
     BOX_STRIDE: int = 30 * 136
 
+    #: Offset of the daycare inside the general block. Two slots, spaced a
+    #: party-sized record apart, of which only the stored part is the record;
+    #: the tail of each holds the experience earned while deposited.
+    DAYCARE_OFFSET: int | None = None
+    #: HG/SS parks the Pokemon out on a Pokewalker course here. It lives
+    #: nowhere else in the save, so a walk in progress is lost without it.
+    WALKER_OFFSET: int | None = None
+
+    def extra_regions(self) -> tuple[ExtraRegion, ...]:
+        regions: list[ExtraRegion] = []
+        if self.DAYCARE_OFFSET is not None:
+            regions.append(ExtraRegion(
+                "daycare", 2, crypto.SIZE_4PARTY, self.DAYCARE_OFFSET,
+                size=crypto.SIZE_4STORED))
+        if self.WALKER_OFFSET is not None:
+            regions.append(ExtraRegion(
+                "pokewalker", 1, 0, self.WALKER_OFFSET,
+                size=crypto.SIZE_4STORED))
+        return tuple(regions)
+
+    def _extra_base(self, region: ExtraRegion) -> tuple[bytearray, int]:
+        return self.data, self.general_base
+
     def __init__(self, data: bytes | bytearray) -> None:
         super().__init__(data)
         self.general_base = self._active_base(0, self.GENERAL_SIZE)
