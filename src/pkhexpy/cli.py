@@ -73,6 +73,13 @@ def cmd_from_json(args: argparse.Namespace) -> int:
             f"pkhexpy/save/N or pkhexpy/entity/N, found {schema!r}")
     if schema.startswith("pkhexpy/save"):
         return _save_from_json(document, args)
+    if args.into:
+        # Silently ignoring it writes a .pkX and reports success while the save
+        # the user named goes untouched.
+        raise ValueError(
+            f"--into writes edits back into a save, but {args.input} is an "
+            f"entity document ({schema}). Export the save itself to get a "
+            f"document --into can apply")
     entity = entity_json.from_dict(document)
     out = args.output or Path(args.input).with_suffix(f".{type(entity).__name__.lower()}")
     entity_io.write_file(out, entity, encrypted=args.encrypted)
