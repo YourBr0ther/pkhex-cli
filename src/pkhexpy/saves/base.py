@@ -65,6 +65,9 @@ class ExtraRegion:
     count: int
     stride: int
     start: int = 0
+    #: Explicit offsets, for a run the games did not space evenly. Overrides
+    #: ``start`` and ``stride`` when given.
+    offsets: tuple[int, ...] | None = None
     party_format: bool = False
     #: Record size, when it differs from a box slot. Let's Go boxes are party
     #: sized but its daycare keeps a stored record.
@@ -259,7 +262,10 @@ class SaveFile:
         """The buffer, offset and record size one extra slot occupies."""
         region = self._find_region(kind, index)
         buffer, base = self._extra_base(region)
-        offset = base + region.start + index * region.stride
+        if region.offsets is not None:
+            offset = base + region.offsets[index]
+        else:
+            offset = base + region.start + index * region.stride
         return buffer, offset, region.size or self.SIZE_BOXSLOT
 
     def get_extra_slot(self, kind: str, index: int = 0):

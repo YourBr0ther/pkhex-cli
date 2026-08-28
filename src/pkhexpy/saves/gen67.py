@@ -89,6 +89,10 @@ class SAV67(SaveFile):
     GTS_BLOCK: int | None = None
     GIFT_BLOCK: int | None = None
     GIFT_OFFSET: int = 0
+    #: Poke Pelago, which holds more Pokemon than any other extra storage in
+    #: the series, and the Battle Agency rental team in Ultra Sun/Moon.
+    RESORT_BLOCK: int | None = None
+    AGENCY_BLOCK: int | None = None
     #: Kyurem's other half, and in Ultra Sun/Moon the two Necrozma fusions.
     FUSED_BLOCK: int | None = None
     FUSED_COUNT: int = 1
@@ -120,6 +124,16 @@ class SAV67(SaveFile):
             regions.append(ExtraRegion("gift", 1, 0, self.GIFT_OFFSET,
                                        size=crypto.SIZE_6STORED,
                                        source=self.GIFT_BLOCK))
+        if self.RESORT_BLOCK is not None:
+            # Poke Pelago: six islands, 18 slots each but for the second's
+            # three, and four bytes of metadata after every record.
+            regions.append(ExtraRegion(
+                "resort", 93, crypto.SIZE_6STORED + 4, 0x16,
+                size=crypto.SIZE_6STORED, source=self.RESORT_BLOCK))
+        if self.AGENCY_BLOCK is not None:
+            regions.append(ExtraRegion(
+                "battle_agency", 3, 0, offsets=(0, crypto.SIZE_6STORED, 0x220),
+                size=crypto.SIZE_6STORED, source=self.AGENCY_BLOCK))
         return tuple(regions)
 
     def _extra_base(self, region: ExtraRegion) -> tuple[bytearray, int]:
@@ -316,6 +330,7 @@ class SAV7SM(SAV67):
     DAYCARE_RECORD_OFFSET = 1
     FUSED_BLOCK = 8
     FUSED_PARTY_SIZED = True
+    RESORT_BLOCK = 15
 
 
 class SAV7USUM(SAV7SM):
@@ -324,6 +339,7 @@ class SAV7USUM(SAV7SM):
     BLOCK_TABLE = "usum"
     #: Kyurem, then Necrozma fused with Solgaleo and with Lunala.
     FUSED_COUNT = 3
+    AGENCY_BLOCK = 37
 
 
 class SAV7b(SAV67):
