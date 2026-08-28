@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from pkhexpy.pkm import io, serialize
-from pkhexpy.pkm.formats import ALL_FORMATS, PA8, PB7, PK1, PK2, PK9, SK2
+from pkhexpy.pkm.formats import ALL_FORMATS, PA8, PA9, PB7, PK1, PK2, PK9, SK2
 
 #: PKHeX names its files "<dex><shiny> - <nickname> - <hex>", so the filename is
 #: an independent check on what the parser reads out of the bytes.
@@ -294,3 +294,44 @@ def test_stadium_names_live_inside_the_record() -> None:
     pk.original_trainer_name = "ASH"
     assert io.from_bytes(io.to_bytes(pk), extension="sk2").nickname == "SPARKY"
     assert pk.original_trainer_name == "ASH"
+
+
+def _za_candidate(held_item: int) -> bytes:
+    """A Switch-era record that reaches the last branches of the detector.
+
+    Everything the earlier tests key on is cleared, so what the held item says
+    is the only thing left to decide between PK9 and PA9. No public Legends
+    Z-A save exists to take a real record from.
+    """
+    from pkhexpy import crypto
+    from pkhexpy.binio import write_u16, write_u32
+
+    core = bytearray(crypto.SIZE_8STORED)
+    write_u32(core, 0x120, 1)     # captured: has a met location
+    core[0x11F] = 1               # obedience level, so not the egg path
+    core[0xCE] = 0                # not the Z-A version byte
+    core[0x23] = 0                # not an alpha
+    write_u16(core, 0x0A, held_item)
+    return bytes(core)
+
+
+def test_a_mega_stone_settles_an_otherwise_ambiguous_record() -> None:
+    """The detector's last branch used to return PK9 either way, so the test
+    it computed was thrown away. Scarlet/Violet has no Mega Stones."""
+    from pkhexpy.pkm.io import ZA_UNIQUE_HELD_ITEMS, _detect_89
+
+    assert _detect_89(_za_candidate(0)) is PK9
+    assert _detect_89(_za_candidate(656)) is PA9      # Gengarite
+    assert _detect_89(_za_candidate(534)) is PA9      # Red Orb
+    assert 656 in ZA_UNIQUE_HELD_ITEMS and 534 in ZA_UNIQUE_HELD_ITEMS
+
+
+def test_a_relearn_move_still_means_scarlet_violet() -> None:
+    """Z-A has no relearn moves, so the branch above the held-item check keeps
+    priority even when a Mega Stone is held."""
+    from pkhexpy.binio import write_u16
+    from pkhexpy.pkm.io import _detect_89
+
+    core = bytearray(_za_candidate(656))
+    write_u16(core, 0x82, 33)     # a relearn move
+    assert _detect_89(bytes(core)) is PK9
