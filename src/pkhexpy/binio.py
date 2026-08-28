@@ -13,7 +13,17 @@ Buffer = bytearray
 
 
 def _u(data: bytes, offset: int, size: int, big: bool = False) -> int:
-    return int.from_bytes(data[offset:offset + size], "big" if big else "little")
+    # Slicing past the end yields fewer bytes and decodes to a plausible
+    # smaller number; a negative offset slices to nothing and decodes to zero.
+    # A record has a fixed layout, so either one is a bug, and returning a
+    # believable answer is the worst way to report it.
+    raw = data[offset:offset + size]
+    if offset < 0 or len(raw) != size:
+        raise IndexError(
+            f"read of {size} bytes at 0x{offset:X} runs past the end of a "
+            f"{len(data)}-byte buffer"
+        )
+    return int.from_bytes(raw, "big" if big else "little")
 
 
 def _w(data: Buffer, offset: int, size: int, value: int, big: bool = False) -> None:
@@ -36,18 +46,8 @@ def write_int(data: Buffer, offset: int, size: int, value: int,
 
 
 def read_int(data: bytes, offset: int, size: int, big: bool = False) -> int:
-    """Read an unsigned value of an arbitrary width, refusing a short read.
-
-    Slicing past the end of a buffer yields fewer bytes and would decode to a
-    plausible smaller number rather than failing.
-    """
-    raw = data[offset:offset + size]
-    if offset < 0 or len(raw) != size:
-        raise IndexError(
-            f"read of {size} bytes at 0x{offset:X} runs past the end of a "
-            f"{len(data)}-byte buffer"
-        )
-    return int.from_bytes(raw, "big" if big else "little")
+    """Read an unsigned value of an arbitrary width, refusing a short read."""
+    return _u(data, offset, size, big)
 
 
 def read_u8(data: bytes, offset: int) -> int:
