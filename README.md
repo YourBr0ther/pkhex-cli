@@ -193,9 +193,12 @@ constructed save, so treat it as unverified.
   files round trip exactly and emulators load edited ones.
 - No legality checking. PKHeX will tell you a Pokémon could never have existed;
   this reads and writes what the bytes say.
-- Save formats not covered: Colosseum, XD, Battle Revolution, Ranch, Stadium,
-  GameCube memory-card containers, and the Pokémon Bank and Pokéstock bulk
-  binaries. The Pokémon formats from those games do work.
+- Save formats not covered: Colosseum, XD, Ruby/Sapphire Box, Battle
+  Revolution, Ranch, Stadium, the Omega Ruby/Alpha Sapphire demo, GameCube
+  memory-card containers, and the Pokémon Bank and Pokéstock bulk binaries.
+  Handed one, `pkhexpy` names the format and says it is out of scope rather
+  than reporting the file as unrecognizable. The Pokémon formats from those
+  games do work as individual files.
 - Rejects console-encrypted or container-wrapped dumps with a message rather
   than parsing them into nonsense.
 

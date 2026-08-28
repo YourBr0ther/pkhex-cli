@@ -669,3 +669,33 @@ def test_legends_za_declares_its_own_extra_storage() -> None:
     shared = sv_keys & za_keys
     assert shared == {0x916BCA9E}, (
         f"only the Calyrex fusion key is shared, found {shared}")
+
+
+def test_unsupported_formats_are_named_not_dismissed() -> None:
+    """A Colosseum save is a valid file this port chooses not to read. Saying
+    only that nothing matches leaves the caller suspecting their dump."""
+    for size, expected in (
+        (0x60000, "Colosseum"),
+        (0x56000, "XD"),
+        (0x380000, "Battle Revolution"),
+        (0x5A00, "demo"),
+        (0x1FF00, "Stadium"),
+    ):
+        with pytest.raises(saves.SaveFormatError) as error:
+            saves.from_bytes(bytes(size))
+        assert expected in str(error.value)
+        assert "out of scope" in str(error.value)
+
+
+def test_a_size_shared_with_a_supported_game_names_both() -> None:
+    """Ruby/Sapphire Box is the same size as ORAS, which this port does read."""
+    with pytest.raises(saves.SaveFormatError) as error:
+        saves.from_bytes(bytes(0x76000))
+    message = str(error.value)
+    assert "Omega Ruby/Alpha Sapphire" in message
+    assert "Ruby/Sapphire Box" in message
+
+
+def test_an_unrecognized_size_still_says_so() -> None:
+    with pytest.raises(saves.SaveFormatError, match="no save format matches"):
+        saves.from_bytes(bytes(12345))

@@ -38,6 +38,20 @@ SIZE_G9SV_EXACT = (
 SIZE_G9SV_RANGES = ((0x4329A0, 0x432ED6 + 100 + 0x83AD),)
 
 
+#: Recognized, deliberately unsupported. The Pokemon formats these games use
+#: do work; it is the save containers around them that are out of scope.
+UNSUPPORTED_SIZES: dict[int, str] = {
+    0x5A00: "the Omega Ruby/Alpha Sapphire demo, which this port does not read",
+    0x56000: "Pokemon XD, which this port does not read",
+    0x60000: "Pokemon Colosseum, which this port does not read",
+    0x76000: "Ruby/Sapphire Box, which this port does not read",
+    0x380000: "Battle Revolution, which this port does not read",
+    0x54000: "My Pokemon Ranch, which this port does not read",
+    0x7C000: "My Pokemon Ranch (Platinum), which this port does not read",
+    0x1FF00: "a Stadium save, which this port does not read",
+}
+
+
 class SaveFormatError(ValueError):
     """Raised when a buffer does not match any known save format."""
 
@@ -67,6 +81,11 @@ def _register_sizes() -> None:
         KNOWN_SIZES[size] = "Legends: Z-A"
     for size in SIZE_G9SV_EXACT:
         KNOWN_SIZES[size] = "Scarlet/Violet"
+    # Formats PKHeX reads that this port does not. Naming them tells a caller
+    # their file is fine and simply out of scope, rather than unrecognizable.
+    # Sizes already claimed by a supported game are left alone: Stadium shares
+    # one with Gen3, and the Japanese Stadium shares one with Gen1.
+
 
 
 #: Emulators append their real-time-clock state after a Game Boy or GBA save.
@@ -202,10 +221,22 @@ def detect(data: bytes):
 
     known = KNOWN_SIZES.get(size)
     if known:
-        raise SaveFormatError(
+        message = (
             f"{size} bytes is the right size for {known}, but the file does not "
             "have the structure one should. It may still be encrypted, or be a "
             "container the dumper wrapped around the save"
+        )
+        # The size may also belong to a game that is simply out of scope, which
+        # is worth saying rather than leaving the caller to suspect their file.
+        other = UNSUPPORTED_SIZES.get(size)
+        if other:
+            message += f". It is also the size of {other}"
+        raise SaveFormatError(message)
+    unsupported = UNSUPPORTED_SIZES.get(size)
+    if unsupported:
+        raise SaveFormatError(
+            f"this looks like {unsupported}. The Pokemon in it are readable as "
+            "individual files; only the save container is out of scope"
         )
     raise SaveFormatError(f"no save format matches a {size}-byte file")
 
