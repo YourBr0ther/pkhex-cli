@@ -80,6 +80,9 @@ from pkhexpy import saves
 sav = saves.read_file("main")
 print(sav.trainer_name, sav.money, sav.checksums_valid)
 
+sav.trainer_name = "Ash"
+sav.money = 999999
+
 for box, slot, pk in sav.iter_boxes():
     print(box, slot, pk.species_name, pk.current_level, pk.is_shiny)
 
@@ -199,13 +202,13 @@ constructed save, so treat it as unverified.
 ## Development
 
 ```sh
-python3 -m pytest tests/ -q          # 52 tests on a bare clone
+python3 -m pytest tests/ -q          # 54 tests on a bare clone
 
 git clone --depth 1 https://github.com/kwsch/PKHeX.git reference_PKHeX
-python3 -m pytest tests/ -q          # 80, with the .pkX fixtures
+python3 -m pytest tests/ -q          # 82, with the .pkX fixtures
 
 sh tools/fetch_test_saves.sh         # ~40 MB of real saves
-python3 -m pytest tests/ -q          # 93, with the save corpus
+python3 -m pytest tests/ -q          # 107, with the save corpus
 ```
 
 `PKHEX_REFERENCE` and `PKHEXPY_SAVES` relocate those two directories.

@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from functools import lru_cache
 
-from ..binio import read_u16, read_u32, write_u16
+from ..binio import read_u16, read_u32, write_u16, write_u32
 from ..data import DATA_DIR
 from ..pkm.formats import PB7, PK6, PK7
 from . import checksums
@@ -151,13 +151,26 @@ class SAV67(SaveFile):
         start = self._status_base + self.STATUS_OT_OFFSET
         return self.decode_string(bytes(self.data[start:start + 0x1A]))
 
+    @trainer_name.setter
+    def trainer_name(self, value: str) -> None:
+        start = self._status_base + self.STATUS_OT_OFFSET
+        self.data[start:start + 0x1A] = self.encode_trainer_name(0x1A, value)
+
     @property
     def tid16(self) -> int:
         return read_u16(self.data, self._status_base)
 
+    @tid16.setter
+    def tid16(self, value: int) -> None:
+        write_u16(self.data, self._status_base, value)
+
     @property
     def sid16(self) -> int:
         return read_u16(self.data, self._status_base + 2)
+
+    @sid16.setter
+    def sid16(self, value: int) -> None:
+        write_u16(self.data, self._status_base + 2, value)
 
     @property
     def version(self) -> int:
@@ -166,6 +179,10 @@ class SAV67(SaveFile):
     @property
     def trainer_gender(self) -> int:
         return self.data[self._status_base + 5]
+
+    @trainer_gender.setter
+    def trainer_gender(self, value: int) -> None:
+        self.data[self._status_base + 5] = value
 
     @property
     def language(self) -> int:
@@ -176,11 +193,26 @@ class SAV67(SaveFile):
         base = self.block_offset(self.PLAYTIME_BLOCK)
         return read_u16(self.data, base), self.data[base + 2], self.data[base + 3]
 
+    @play_time.setter
+    def play_time(self, value: tuple[int, int, int]) -> None:
+        base = self.block_offset(self.PLAYTIME_BLOCK)
+        hours, minutes, seconds = value
+        write_u16(self.data, base, hours)
+        self.data[base + 2] = minutes
+        self.data[base + 3] = seconds
+
     @property
     def money(self) -> int | None:
         if self.MISC_BLOCK is None:
             return None
         return read_u32(self.data, self.block_offset(self.MISC_BLOCK) + self.MISC_MONEY_OFFSET)
+
+    @money.setter
+    def money(self, value: int) -> None:
+        if self.MISC_BLOCK is None:
+            raise NotImplementedError(f"{self.GAME} has no money block")
+        write_u32(self.data,
+                  self.block_offset(self.MISC_BLOCK) + self.MISC_MONEY_OFFSET, value)
 
 
 class SAV6XY(SAV67):

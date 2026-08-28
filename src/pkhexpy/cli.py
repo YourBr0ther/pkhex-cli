@@ -66,7 +66,12 @@ def cmd_to_json(args: argparse.Namespace) -> int:
 
 def cmd_from_json(args: argparse.Namespace) -> int:
     document = json.loads(Path(args.input).read_text(encoding="utf-8"))
-    if document.get("schema", "").startswith("pkhexpy/save"):
+    schema = document.get("schema") if isinstance(document, dict) else None
+    if not isinstance(schema, str) or not schema.startswith("pkhexpy/"):
+        raise ValueError(
+            f"{args.input} is not a pkhexpy document; expected a schema of "
+            f"pkhexpy/save/N or pkhexpy/entity/N, found {schema!r}")
+    if schema.startswith("pkhexpy/save"):
         return _save_from_json(document, args)
     entity = entity_json.from_dict(document)
     out = args.output or Path(args.input).with_suffix(f".{type(entity).__name__.lower()}")
@@ -80,6 +85,7 @@ def _save_from_json(document, args: argparse.Namespace) -> int:
     """Rebuild a save. Editing needs the original file to write the slots into."""
     if args.into:
         sav = save_io.read_file(args.into)
+        _check_into_matches(document, sav, args.into)
     elif document.get("raw_base64"):
         import base64
         sav = save_io.from_bytes(base64.b64decode(document["raw_base64"]))
@@ -93,6 +99,24 @@ def _save_from_json(document, args: argparse.Namespace) -> int:
     print(f"wrote {out} ({len(sav.data)} bytes, "
           f"checksums {'ok' if sav.checksums_valid else 'INVALID'})", file=sys.stderr)
     return 0
+
+
+def _check_into_matches(document, sav, path) -> None:
+    """Refuse to apply a document to a save it did not come from.
+
+    Nothing downstream would notice: two saves of the same generation take each
+    other's slot writes without complaint, and the result checksums clean.
+    """
+    wanted, found = document.get("save_format"), sav.KEY
+    if wanted is not None and wanted != found:
+        raise ValueError(
+            f"this document came from a {wanted} save, but {path} is {found}; "
+            f"--into needs the file the JSON was exported from")
+    generation = document.get("generation")
+    if generation is not None and generation != sav.GENERATION:
+        raise ValueError(
+            f"this document is generation {generation}, but {path} is "
+            f"generation {sav.GENERATION}")
 
 
 def _checksum_summary(sav) -> str:
@@ -277,8 +301,15 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         return 130
     except (entity_io.EntityFormatError, save_io.SaveFormatError,
-            ValueError, OSError) as exc:
+            ValueError, OSError, NotImplementedError) as exc:
         print(f"pkhexpy: {exc}", file=sys.stderr)
+        return 1
+    except (KeyError, TypeError, IndexError, AttributeError) as exc:
+        # A malformed document reaches the writers as a missing key or a value
+        # of the wrong shape. Say so in one line rather than a stack trace.
+        print(f"pkhexpy: {args.input if hasattr(args, 'input') else 'input'} "
+              f"could not be applied: {type(exc).__name__}: {exc}",
+              file=sys.stderr)
         return 1
 
 

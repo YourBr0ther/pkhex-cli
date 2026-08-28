@@ -8,7 +8,7 @@ above that - slot iteration, JSON, write-back - lives here.
 from __future__ import annotations
 
 import base64
-from typing import Any
+from typing import Any, ClassVar
 from collections.abc import Iterator
 
 from ..pkm import serialize as entity_json
@@ -159,6 +159,25 @@ class SaveFile:
                           self.STRING_GENERATION or self.GENERATION,
                           jp=self.japanese, big_endian=self.BIG_ENDIAN,
                           language=self.language, option=option)
+
+    def encode_trainer_name(self, size: int, value: str) -> bytes:
+        """Encode a trainer name, refusing one this save cannot represent.
+
+        Generations 1 to 4 store text as indexes into a per-language glyph
+        table, so a name the target language has no glyphs for would be stored
+        truncated at the first one missing. Decoding what was just encoded is
+        the only way to know it survived.
+        """
+        limit = self.MAX_STRING_LENGTH_TRAINER
+        buffer = bytearray(size)
+        self.encode_string(buffer, value, limit)
+        wanted, got = value[:limit], self.decode_string(bytes(buffer))
+        if got != wanted:
+            raise ValueError(
+                f"{wanted!r} cannot be written in this save's encoding "
+                f"(generation {self.STRING_GENERATION or self.GENERATION}, "
+                f"language {self.language}); it would be stored as {got!r}")
+        return bytes(buffer)
 
     # --- entity access -------------------------------------------------------
 
@@ -371,12 +390,47 @@ class SaveFile:
             document["raw_base64"] = base64.b64encode(raw).decode("ascii")
         return document
 
+    #: Trainer keys a document may carry, paired with the attribute each one
+    #: writes. Anything else in the block is rejected rather than ignored.
+    TRAINER_KEYS: ClassVar[dict[str, str]] = {
+        "Name": "trainer_name", "TID16": "tid16", "SID16": "sid16",
+        "Gender": "trainer_gender", "Money": "money", "Version": "version",
+        "Language": "language",
+    }
+
+    def apply_trainer(self, trainer: dict[str, Any]) -> None:
+        """Write the trainer block of a JSON document back into the save.
+
+        Only keys whose value actually changed are written, so a document
+        round tripped without edits touches nothing, and a field this save
+        cannot write is reported instead of passing silently.
+        """
+        for key, value in trainer.items():
+            if key == "PlayTime":
+                played = (int(value["Hours"]), int(value["Minutes"]),
+                          int(value["Seconds"]))
+                if played != self.play_time:
+                    self.play_time = played
+                continue
+            attribute = self.TRAINER_KEYS.get(key)
+            if attribute is None:
+                raise ValueError(f"unknown trainer field {key!r}")
+            if value == getattr(self, attribute):
+                continue
+            try:
+                setattr(self, attribute, value)
+            except AttributeError as exc:
+                raise NotImplementedError(
+                    f"{self.GAME} cannot change {key}; it is read-only in this "
+                    f"format") from exc
+
     def apply_dict(self, document: dict[str, Any]) -> None:
         """Write the entities in a JSON document back into their slots.
 
         Each slot's current occupant is the starting point, so a document that
         omits ``raw_base64`` still only changes the fields it names.
         """
+        self.apply_trainer(document.get("trainer") or {})
         for record in document.get("party") or []:
             slot = int(record["slot"])
             entity = entity_json.from_dict(record["entity"], self.get_party_slot(slot))

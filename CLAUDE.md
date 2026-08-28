@@ -99,6 +99,29 @@ Pokémon has no half-width Latin letters, so writing an ASCII nickname would
 terminate the string at the first character. `Entity._write_name` decodes what
 it just encoded and raises if the text did not survive.
 
+**A slot write must be checked before it becomes an offset.** An out-of-range
+index used to be turned into an offset anyway and written, which is how a Red
+save stopped being recognizable. `box_offset`, `box_slot_offset` and
+`party_offset` check the index and delegate to `_box_offset`, `_box_slot_offset`
+and `_party_offset`, so a generation supplying its own offset math cannot skip
+the check. Gen1/2 pack their own lists, so the check lives in `_pack`/`_unpack`.
+
+**A slot only takes its own format.** PK4 and PK5 share a stored size, so an
+unchecked write succeeds and the bytes are reinterpreted under the wrong layout
+with the save still checksumming clean. Everything writing a slot goes through
+`_slot_bytes`, which checks the type and fits the buffer together.
+
+**The party is a list, not six independent slots.** The games read a count and
+expect the occupants at the front. `set_party_slot` raises the count when
+appending, refuses a write that would leave a gap, and closes the gap on
+removal. Let's Go stores its party as pointers into the box list, so it raises
+rather than shifting entities the pointers still name.
+
+**A field the JSON exports must be a field the JSON can import.** `apply_dict`
+used to write party and boxes and drop the trainer block without a word, so an
+edit to money or trainer name vanished into a file that reported success.
+`apply_trainer` writes it and raises on any key it does not know.
+
 **Base stats depend on the form, not just the species.** Giratina's two forms
 swap Attack with Defense and Sp. Atk with Sp. Def, so a species-only lookup gets
 four of six stats wrong. Alternate-form rows sit past the species rows in the
@@ -113,13 +136,13 @@ None instead of a plausible wrong answer.
 ## Testing
 
 ```sh
-python3 -m pytest tests/ -q          # 52 on a bare clone; the rest skip
+python3 -m pytest tests/ -q          # 54 on a bare clone; the rest skip
 
 git clone --depth 1 https://github.com/kwsch/PKHeX.git reference_PKHeX
-python3 -m pytest tests/ -q          # 80, with the .pkX fixtures
+python3 -m pytest tests/ -q          # 82, with the .pkX fixtures
 
 sh tools/fetch_test_saves.sh         # ~40 MB of real saves from public repos
-python3 -m pytest tests/ -q          # 93, with the save corpus too
+python3 -m pytest tests/ -q          # 107, with the save corpus too
 ```
 
 `PKHEX_REFERENCE` moves the PKHeX checkout, `PKHEXPY_SAVES` moves the save

@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from functools import lru_cache
 
-from ..binio import read_u16, read_u32, write_u16
+from ..binio import read_u16, read_u32, write_u16, write_u32
 from ..data import DATA_DIR
 from ..pkm.formats import PK4, PK5
 from . import checksums
@@ -145,21 +145,42 @@ class SAV4(SaveFile):
         start = self.general_base + self.TRAINER_OFFSET
         return self.decode_string(bytes(self.data[start:start + 16]))
 
+    @trainer_name.setter
+    def trainer_name(self, value: str) -> None:
+        start = self.general_base + self.TRAINER_OFFSET
+        self.data[start:start + 16] = self.encode_trainer_name(16, value)
+
     @property
     def tid16(self) -> int:
         return self._general_u16(self.TRAINER_OFFSET + 0x10)
+
+    @tid16.setter
+    def tid16(self, value: int) -> None:
+        write_u16(self.data, self.general_base + self.TRAINER_OFFSET + 0x10, value)
 
     @property
     def sid16(self) -> int:
         return self._general_u16(self.TRAINER_OFFSET + 0x12)
 
+    @sid16.setter
+    def sid16(self, value: int) -> None:
+        write_u16(self.data, self.general_base + self.TRAINER_OFFSET + 0x12, value)
+
     @property
     def money(self) -> int:
         return read_u32(self.data, self.general_base + self.TRAINER_OFFSET + 0x14)
 
+    @money.setter
+    def money(self, value: int) -> None:
+        write_u32(self.data, self.general_base + self.TRAINER_OFFSET + 0x14, value)
+
     @property
     def trainer_gender(self) -> int:
         return self.data[self.general_base + self.TRAINER_OFFSET + 0x18]
+
+    @trainer_gender.setter
+    def trainer_gender(self, value: int) -> None:
+        self.data[self.general_base + self.TRAINER_OFFSET + 0x18] = value
 
     @property
     def language(self) -> int:
@@ -170,6 +191,14 @@ class SAV4(SaveFile):
         base = self.general_base + self.TRAINER_OFFSET
         return (read_u16(self.data, base + 0x22),
                 self.data[base + 0x24], self.data[base + 0x25])
+
+    @play_time.setter
+    def play_time(self, value: tuple[int, int, int]) -> None:
+        base = self.general_base + self.TRAINER_OFFSET
+        hours, minutes, seconds = value
+        write_u16(self.data, base + 0x22, hours)
+        self.data[base + 0x24] = minutes
+        self.data[base + 0x25] = seconds
 
     # --- integrity -----------------------------------------------------------
 
@@ -289,13 +318,26 @@ class SAV5(SaveFile):
         start = self._trainer_base + 4
         return self.decode_string(bytes(self.data[start:start + 0x10]))
 
+    @trainer_name.setter
+    def trainer_name(self, value: str) -> None:
+        start = self._trainer_base + 4
+        self.data[start:start + 0x10] = self.encode_trainer_name(0x10, value)
+
     @property
     def tid16(self) -> int:
         return read_u16(self.data, self._trainer_base + 0x14)
 
+    @tid16.setter
+    def tid16(self, value: int) -> None:
+        write_u16(self.data, self._trainer_base + 0x14, value)
+
     @property
     def sid16(self) -> int:
         return read_u16(self.data, self._trainer_base + 0x16)
+
+    @sid16.setter
+    def sid16(self, value: int) -> None:
+        write_u16(self.data, self._trainer_base + 0x16, value)
 
     @property
     def language(self) -> int:
@@ -309,10 +351,22 @@ class SAV5(SaveFile):
     def trainer_gender(self) -> int:
         return self.data[self._trainer_base + 0x21]
 
+    @trainer_gender.setter
+    def trainer_gender(self, value: int) -> None:
+        self.data[self._trainer_base + 0x21] = value
+
     @property
     def play_time(self) -> tuple[int, int, int]:
         base = self._trainer_base + 0x24
         return read_u16(self.data, base), self.data[base + 2], self.data[base + 3]
+
+    @play_time.setter
+    def play_time(self, value: tuple[int, int, int]) -> None:
+        base = self._trainer_base + 0x24
+        hours, minutes, seconds = value
+        write_u16(self.data, base, hours)
+        self.data[base + 2] = minutes
+        self.data[base + 3] = seconds
 
     @property
     def money(self) -> int | None:
@@ -320,6 +374,13 @@ class SAV5(SaveFile):
             return None
         return read_u32(self.data, self.blocks[self.MISC_BLOCK]["offset"]
                         + self.MISC_MONEY_OFFSET)
+
+    @money.setter
+    def money(self, value: int) -> None:
+        if len(self.blocks) <= self.MISC_BLOCK:
+            raise NotImplementedError(f"{self.GAME} has no money block")
+        write_u32(self.data, self.blocks[self.MISC_BLOCK]["offset"]
+                  + self.MISC_MONEY_OFFSET, value)
 
     # --- integrity -----------------------------------------------------------
 

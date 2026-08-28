@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import ClassVar
 
-from ..binio import read_u16, read_u16_be, write_u16
+from ..binio import read_u16, read_u16_be, write_u16, write_u16_be
 from ..pkm.formats import (
     PK1, PK2, STRING_LENGTH_INTERNATIONAL, STRING_LENGTH_JAPANESE,
 )
@@ -18,6 +18,15 @@ from .base import SaveFile
 SIZE_G1RAW = 0x8000
 SIZE_G2RAW_U = 0x8000
 SIZE_G2RAW_J = 0x10000
+
+
+def write_bcd(size: int, value: int) -> bytes:
+    """Encode a value as big-endian binary-coded decimal, as the games store it."""
+    limit = 10 ** (size * 2)
+    if not 0 <= value < limit:
+        raise ValueError(f"{value} does not fit in {size} BCD bytes (max {limit - 1})")
+    digits = str(value).rjust(size * 2, "0")
+    return bytes(int(digits[i * 2]) << 4 | int(digits[i * 2 + 1]) for i in range(size))
 
 
 def read_bcd(data: bytes) -> int:
@@ -252,6 +261,12 @@ class SAVGB(SaveFile):
         return self.decode_string(
             bytes(self.data[self.OT_OFFSET:self.OT_OFFSET + self.MAX_STRING_LENGTH_TRAINER + 1]))
 
+    @trainer_name.setter
+    def trainer_name(self, value: str) -> None:
+        size = self.MAX_STRING_LENGTH_TRAINER + 1
+        self.data[self.OT_OFFSET:self.OT_OFFSET + size] = self.encode_trainer_name(
+            size, value)
+
     @property
     def language(self) -> int:
         return 1 if self.japanese else 2
@@ -291,16 +306,33 @@ class SAV1(SAVGB):
     def tid16(self) -> int:
         return read_u16_be(self.data, self.offsets["tid"])
 
+    @tid16.setter
+    def tid16(self, value: int) -> None:
+        write_u16_be(self.data, self.offsets["tid"], value)
+
     @property
     def money(self) -> int:
         """Gen1 stores money as three binary-coded-decimal bytes."""
         start = self.offsets["money"]
         return read_bcd(self.data[start:start + 3])
 
+    @money.setter
+    def money(self, value: int) -> None:
+        start = self.offsets["money"]
+        self.data[start:start + 3] = write_bcd(3, value)
+
     @property
     def play_time(self) -> tuple[int, int, int]:
         base = self.offsets["play_time"]
         return self.data[base], self.data[base + 2], self.data[base + 3]
+
+    @play_time.setter
+    def play_time(self, value: tuple[int, int, int]) -> None:
+        base = self.offsets["play_time"]
+        hours, minutes, seconds = value
+        self.data[base] = hours
+        self.data[base + 2] = minutes
+        self.data[base + 3] = seconds
 
     @property
     def current_box(self) -> int:
@@ -369,20 +401,44 @@ class SAV2(SAVGB):
     def tid16(self) -> int:
         return read_u16_be(self.data, self.TRAINER_OFFSET)
 
+    @tid16.setter
+    def tid16(self, value: int) -> None:
+        write_u16_be(self.data, self.TRAINER_OFFSET, value)
+
     @property
     def money(self) -> int:
         start = self.offsets["money"]
         return read_bcd(self.data[start:start + 3])
+
+    @money.setter
+    def money(self, value: int) -> None:
+        start = self.offsets["money"]
+        self.data[start:start + 3] = write_bcd(3, value)
 
     @property
     def trainer_gender(self) -> int:
         offset = self.offsets["gender"]
         return self.data[offset] if offset is not None else 0
 
+    @trainer_gender.setter
+    def trainer_gender(self, value: int) -> None:
+        offset = self.offsets["gender"]
+        if offset is None:
+            raise NotImplementedError(f"{self.GAME} stores no trainer gender")
+        self.data[offset] = value
+
     @property
     def play_time(self) -> tuple[int, int, int]:
         base = self.offsets["play_time"]
         return read_u16_be(self.data, base), self.data[base + 2], self.data[base + 3]
+
+    @play_time.setter
+    def play_time(self, value: tuple[int, int, int]) -> None:
+        base = self.offsets["play_time"]
+        hours, minutes, seconds = value
+        write_u16_be(self.data, base, hours)
+        self.data[base + 2] = minutes
+        self.data[base + 3] = seconds
 
     @property
     def current_box(self) -> int:

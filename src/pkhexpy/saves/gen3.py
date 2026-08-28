@@ -8,7 +8,7 @@ whichever copy saved most recently.
 
 from __future__ import annotations
 
-from ..binio import read_i16, read_u16, read_u32, write_u16
+from ..binio import read_i16, read_u16, read_u32, write_u16, write_u32
 from ..pkm.formats import PK3
 from . import checksums
 from .base import SaveFile
@@ -196,21 +196,44 @@ class SAV3(SaveFile):
     def trainer_name(self) -> str:
         return self.decode_string(bytes(self.small[0:8]))
 
+    @trainer_name.setter
+    def trainer_name(self, value: str) -> None:
+        self.small[0:8] = self.encode_trainer_name(8, value)
+
     @property
     def trainer_gender(self) -> int:
         return self.small[8]
+
+    @trainer_gender.setter
+    def trainer_gender(self, value: int) -> None:
+        self.small[8] = value
 
     @property
     def tid16(self) -> int:
         return read_u16(self.small, 0x0A)
 
+    @tid16.setter
+    def tid16(self, value: int) -> None:
+        write_u16(self.small, 0x0A, value)
+
     @property
     def sid16(self) -> int:
         return read_u16(self.small, 0x0C)
 
+    @sid16.setter
+    def sid16(self, value: int) -> None:
+        write_u16(self.small, 0x0C, value)
+
     @property
     def play_time(self) -> tuple[int, int, int]:
         return read_u16(self.small, 0x0E), self.small[0x10], self.small[0x11]
+
+    @play_time.setter
+    def play_time(self, value: tuple[int, int, int]) -> None:
+        hours, minutes, seconds = value
+        write_u16(self.small, 0x0E, hours)
+        self.small[0x10] = minutes
+        self.small[0x11] = seconds
 
     @property
     def security_key(self) -> int:
@@ -221,6 +244,10 @@ class SAV3(SaveFile):
     @property
     def money(self) -> int:
         return read_u32(self.large, self.MONEY_OFFSET) ^ self.security_key
+
+    @money.setter
+    def money(self, value: int) -> None:
+        write_u32(self.large, self.MONEY_OFFSET, value ^ self.security_key)
 
     @property
     def language(self) -> int:

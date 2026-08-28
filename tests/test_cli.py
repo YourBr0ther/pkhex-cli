@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from pkhexpy import cli
+from pkhexpy import cli, saves
 
 
 def run(*args: str) -> int:
@@ -170,3 +170,39 @@ def test_unicode_path_with_spaces(entity: Path, tmp_path: Path) -> None:
     target.write_bytes(entity.read_bytes())
     assert run("show", str(target)) == 0
     assert run("to-json", str(target), "-o", str(folder / "out.json")) == 0
+
+
+def test_from_json_rejects_a_document_that_is_not_ours(tmp_path: Path, capsys) -> None:
+    path = tmp_path / "bad.json"
+    path.write_text('{"hello": 1}')
+    assert run("from-json", str(path), "-o", str(tmp_path / "x.pk9")) == 1
+    assert "not a pkhexpy document" in capsys.readouterr().err
+
+
+def test_from_json_rejects_json_that_is_not_an_object(tmp_path: Path, capsys) -> None:
+    path = tmp_path / "arr.json"
+    path.write_text("[1, 2, 3]")
+    assert run("from-json", str(path), "-o", str(tmp_path / "x.pk9")) == 1
+    assert "not a pkhexpy document" in capsys.readouterr().err
+
+
+def test_into_must_match_the_document(real_saves: list[Path], tmp_path: Path,
+                                      capsys) -> None:
+    """Two saves of the same generation take each other's slot writes without
+    complaint and the result checksums clean, so nothing downstream notices."""
+    by_key: dict[str, Path] = {}
+    for path in real_saves:
+        try:
+            sav = saves.from_bytes(path.read_bytes())
+        except saves.SaveFormatError:
+            continue
+        by_key.setdefault(sav.KEY, path)
+    if len(by_key) < 2:
+        pytest.skip("need saves from two different games")
+    first, second = (by_key[key] for key in list(by_key)[:2])
+    document = tmp_path / "doc.json"
+    assert run("to-json", str(first), "--no-raw", "-o", str(document)) == 0
+    capsys.readouterr()
+    assert run("from-json", str(document), "--into", str(second),
+               "-o", str(tmp_path / "out.sav")) == 1
+    assert "--into needs the file the JSON was exported from" in capsys.readouterr().err

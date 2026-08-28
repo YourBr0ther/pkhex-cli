@@ -7,7 +7,7 @@ holds the boxes differs per game, so each class names the keys it needs.
 
 from __future__ import annotations
 
-from ..binio import read_u16, read_u32
+from ..binio import read_u16, read_u32, write_u16, write_u32
 from ..pkm.formats import PA8, PA9, PK8, PK9
 from . import swish
 from .base import SaveFile
@@ -151,13 +151,26 @@ class SAV89(SaveFile):
         start = self.STATUS_OT_OFFSET
         return self.decode_string(bytes(data[start:start + 0x1A]))
 
+    @trainer_name.setter
+    def trainer_name(self, value: str) -> None:
+        start = self.STATUS_OT_OFFSET
+        self.status_data[start:start + 0x1A] = self.encode_trainer_name(0x1A, value)
+
     @property
     def tid16(self) -> int:
         return read_u16(self.status_data, self.STATUS_ID_OFFSET)
 
+    @tid16.setter
+    def tid16(self, value: int) -> None:
+        write_u16(self.status_data, self.STATUS_ID_OFFSET, value)
+
     @property
     def sid16(self) -> int:
         return read_u16(self.status_data, self.STATUS_ID_OFFSET + 2)
+
+    @sid16.setter
+    def sid16(self, value: int) -> None:
+        write_u16(self.status_data, self.STATUS_ID_OFFSET + 2, value)
 
     @property
     def version(self) -> int:
@@ -166,6 +179,10 @@ class SAV89(SaveFile):
     @property
     def trainer_gender(self) -> int:
         return self.status_data[self.STATUS_GENDER_OFFSET]
+
+    @trainer_gender.setter
+    def trainer_gender(self, value: int) -> None:
+        self.status_data[self.STATUS_GENDER_OFFSET] = value
 
     @property
     def language(self) -> int:
@@ -182,12 +199,36 @@ class SAV89(SaveFile):
             return (0, 0, 0)
         return read_u16(data, 0), data[2], data[3]
 
+    @play_time.setter
+    def play_time(self, value: tuple[int, int, int]) -> None:
+        data = self.block_data(self.KEY_PLAY_TIME)
+        hours, minutes, seconds = value
+        need = 12 if self.PLAY_TIME_WIDE else 4
+        if len(data) < need:
+            raise NotImplementedError(f"{self.GAME} has no play time block")
+        if self.PLAY_TIME_WIDE:
+            # Gen9 widened each unit to its own 32-bit field.
+            write_u32(data, 0, hours)
+            write_u32(data, 4, minutes)
+            write_u32(data, 8, seconds)
+        else:
+            write_u16(data, 0, hours)
+            data[2] = minutes
+            data[3] = seconds
+
     @property
     def money(self) -> int | None:
         if self.KEY_MONEY is None:
             return None
         block = self.block(self.KEY_MONEY)
         return int(block.get_value()) if block is not None else None
+
+    @money.setter
+    def money(self, value: int) -> None:
+        block = self.block(self.KEY_MONEY) if self.KEY_MONEY is not None else None
+        if block is None:
+            raise NotImplementedError(f"{self.GAME} has no money block")
+        block.set_value(value)
 
     # --- integrity -----------------------------------------------------------
 

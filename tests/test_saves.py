@@ -382,3 +382,85 @@ def test_writing_past_the_party_end_is_refused(real_saves: list[Path]) -> None:
             sav.set_party_slot(count + 1, sav.get_party_slot(0))
         checked += 1
     assert checked >= 2, f"only {checked} saves had room to leave a gap"
+
+
+def test_trainer_edits_survive_a_write(real_saves: list[Path]) -> None:
+    """Every generation must write back what it reports reading."""
+    checked = 0
+    for sav in _one_per_generation(real_saves):
+        wanted: dict[str, object] = {"tid16": 4242, "play_time": (11, 22, 33)}
+        if sav.money is not None:
+            wanted["money"] = 12345
+        for name, value in wanted.items():
+            setattr(sav, name, value)
+        reloaded = saves.from_bytes(sav.to_bytes())
+        for name, value in wanted.items():
+            assert getattr(reloaded, name) == value, (
+                f"{type(sav).__name__}.{name} did not survive")
+        assert reloaded.checksums_valid
+        checked += 1
+    assert checked >= 6, f"only {checked} generations were exercised"
+
+
+def test_trainer_name_survives_a_write(real_saves: list[Path]) -> None:
+    """ASCII is representable in every generation's encoding."""
+    checked = 0
+    for sav in _one_per_generation(real_saves):
+        sav.trainer_name = "ASH"
+        reloaded = saves.from_bytes(sav.to_bytes())
+        assert reloaded.trainer_name == "ASH", type(sav).__name__
+        assert reloaded.checksums_valid
+        checked += 1
+    assert checked >= 6, f"only {checked} generations were exercised"
+
+
+def test_unencodable_trainer_name_is_rejected(real_saves: list[Path]) -> None:
+    """Gen1 to 4 index a per-language glyph table, so a name those glyphs
+    cannot spell would be stored truncated at the first one missing."""
+    checked = 0
+    for sav in _one_per_generation(real_saves):
+        # Gen4 indexes one unified table that already contains kana.
+        if sav.GENERATION > 3 or sav.japanese:
+            continue
+        with pytest.raises(ValueError):
+            sav.trainer_name = "ひらがな"
+        checked += 1
+    assert checked >= 2, f"only {checked} legacy saves were exercised"
+
+
+def test_trainer_edits_made_in_json_reach_the_save(real_saves: list[Path]) -> None:
+    """The loop the README advertises: export, edit, write a game file back."""
+    checked = 0
+    for sav in _one_per_generation(real_saves):
+        if sav.money is None:
+            continue
+        document = sav.to_dict(include_raw=True)
+        document["trainer"]["Money"] = 777
+        document["trainer"]["TID16"] = 999
+        rebuilt = saves.from_bytes(base64.b64decode(document["raw_base64"]))
+        rebuilt.apply_dict(document)
+        reloaded = saves.from_bytes(rebuilt.to_bytes())
+        assert (reloaded.money, reloaded.tid16) == (777, 999)
+        assert reloaded.checksums_valid
+        checked += 1
+    assert checked >= 5, f"only {checked} saves carried money"
+
+
+def test_unknown_trainer_field_is_rejected(real_saves: list[Path]) -> None:
+    """Silently ignoring it is how an edit disappears without a word."""
+    sav = _one_per_generation(real_saves)[0]
+    with pytest.raises(ValueError, match="unknown trainer field"):
+        sav.apply_trainer({"Nonsense": 1})
+
+
+def test_unedited_trainer_block_changes_nothing(real_saves: list[Path]) -> None:
+    """Applying a document straight back must stay byte exact."""
+    checked = 0
+    for sav in _one_per_generation(real_saves):
+        original = bytes(sav.to_bytes())
+        document = sav.to_dict(include_raw=True)
+        rebuilt = saves.from_bytes(base64.b64decode(document["raw_base64"]))
+        rebuilt.apply_dict(document)
+        assert rebuilt.to_bytes() == original, type(sav).__name__
+        checked += 1
+    assert checked >= 6, f"only {checked} generations were exercised"
