@@ -118,6 +118,8 @@ io.write_file("edited.pk9", serialize.from_dict(document))
     "SpeciesName": "Muk",
     "Level": 20,
     "IsShiny": true,
+    "BaseStats": [105, 105, 75, 50, 65, 100],
+    "CalculatedStats": [77, 52, 40, 30, 36, 50],
     "MoveNames": ["Minimize", "Disable", "Acid Spray", "Poison Fang"],
     "MetLocationName": "Pokémon GO"
   },
@@ -168,6 +170,16 @@ The suite also range-checks every field of all 18,513 Pokémon, asserts that
 fields expected to vary are not stuck on one value, and confirms each level
 matches the experience stored beside it.
 
+One check covers several offsets at once. Recomputing a party Pokémon's battle
+stats needs its base stats, IVs, EVs, level and nature to all be read
+correctly, and the game stores the answer next to them. 241 of 253 party
+Pokémon match exactly.
+
+The twelve that differ are the games working as designed. Stats are recomputed
+only on level-up, so EVs earned since the last one have not been applied yet.
+Feeding the earlier value back in reproduces all twelve exactly. The JSON
+reports both numbers, as `CalculatedStats` and `StoredStats`.
+
 Legends Z-A has no public save dump. Its geometry runs only against a
 constructed save, so treat it as unverified.
 
@@ -187,13 +199,13 @@ constructed save, so treat it as unverified.
 ## Development
 
 ```sh
-python3 -m pytest tests/ -q          # 46 tests on a bare clone
+python3 -m pytest tests/ -q          # 52 tests on a bare clone
 
 git clone --depth 1 https://github.com/kwsch/PKHeX.git reference_PKHeX
-python3 -m pytest tests/ -q          # 74, with the .pkX fixtures
+python3 -m pytest tests/ -q          # 80, with the .pkX fixtures
 
 sh tools/fetch_test_saves.sh         # ~40 MB of real saves
-python3 -m pytest tests/ -q          # 86, with the save corpus
+python3 -m pytest tests/ -q          # 93, with the save corpus
 ```
 
 `PKHEX_REFERENCE` and `PKHEXPY_SAVES` relocate those two directories.

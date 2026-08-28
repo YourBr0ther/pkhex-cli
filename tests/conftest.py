@@ -8,9 +8,15 @@ is absent; point PKHEX_REFERENCE at it to run them.
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 import pytest
+
+# The corpus definition lives with the tooling that downloads it, so the tests
+# and tools/audit_fields.py cannot drift apart about what it contains.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
+import corpus
 
 ENTITY_EXTENSIONS = {
     "pk1", "pk2", "pk3", "pk4", "pk5", "pk6", "pk7", "pk8", "pk9",
@@ -49,30 +55,16 @@ def save_file(reference: Path) -> Path:
     return matches[0]
 
 
-#: Files inside the save corpus that are not saves: archive leftovers, tiny
-#: sidecar files, and GameCube memory-card containers this port does not read.
-NON_SAVE_NAMES = {"main2", "poke_trade", "backup"}
-NON_SAVE_SUFFIXES = {".zip", ".json", ".txt", ".md", ".gci", ".gitinclude"}
-
-
 @pytest.fixture(scope="session")
 def real_saves() -> list[Path]:
     """Real save files, downloaded by tools/fetch_test_saves.sh.
 
-    These are other people's game saves from three public collections, so they
+    These are other people's game saves from four public collections, so they
     are not vendored. Set PKHEXPY_SAVES to wherever you put them.
     """
-    root = Path(os.environ.get("PKHEXPY_SAVES", "test-saves"))
-    if not root.is_dir():
+    if not corpus.corpus_root().is_dir():
         pytest.skip("real save corpus not present; run tools/fetch_test_saves.sh")
-    files = [
-        p for p in sorted(root.rglob("*"))
-        if p.is_file()
-        and ".git" not in p.parts
-        and p.name not in NON_SAVE_NAMES
-        and p.suffix.lower() not in NON_SAVE_SUFFIXES
-        and p.stat().st_size > 0x4000
-    ]
+    files = corpus.find_saves()
     if not files:
         pytest.skip("save corpus is empty")
     return files

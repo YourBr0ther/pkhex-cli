@@ -76,6 +76,27 @@ def population(real_saves: list[Path]):
     return grouped
 
 
+@pytest.fixture(scope="module")
+def party_population(real_saves: list[Path]):
+    """Party Pokemon only, grouped by format.
+
+    Only the party keeps a live stat block. A boxed Pokemon holds whatever
+    stats it had when it was last withdrawn, so it says nothing about whether
+    the recomputation is right.
+    """
+    grouped: dict[str, list] = collections.defaultdict(list)
+    for path in real_saves:
+        try:
+            sav = saves.from_bytes(path.read_bytes())
+        except saves.SaveFormatError:
+            continue
+        for _, entity in sav.iter_party():
+            grouped[type(entity).__name__].append(entity)
+    if not grouped:
+        pytest.skip("no party entities read from the corpus")
+    return grouped
+
+
 def test_population_is_large_enough(population) -> None:
     total = sum(len(v) for v in population.values())
     assert total > 5000, f"only {total} Pokemon; the audit needs a big sample"
@@ -163,3 +184,53 @@ def test_names_resolve_for_every_species_seen(population) -> None:
             if entity.species_name in (None, ""):
                 unresolved.add(entity.species)
     assert not unresolved, f"no name for species ids {sorted(unresolved)}"
+
+
+#: Formats whose stored stats match the recomputation exactly across the whole
+#: corpus. A single miss here means the formula or an input offset broke.
+EXACT_STAT_FORMATS = ("PK2", "PK5", "PK6", "PK7", "PK8", "PK9", "PB8")
+
+
+def test_party_stats_recompute_from_their_inputs(party_population) -> None:
+    """Recompute each stat block from base stats, IVs, EVs, level and nature.
+
+    The games store the result next to every input, so agreement checks all of
+    them at once, and it is the only check here that a wrong base-stat table or
+    a swapped IV offset cannot survive.
+
+    Disagreement is expected in a minority of cases and is not a bug: the games
+    only recompute stats on level-up, so EVs earned since the last one are not
+    reflected yet, and edited saves carry stat blocks no input can produce.
+    """
+    agree: collections.Counter = collections.Counter()
+    disagree: collections.Counter = collections.Counter()
+    examples: list[str] = []
+    for cls, entities in party_population.items():
+        for entity in entities:
+            stored = entity.stored_stats
+            computed = entity.calculated_stats()
+            # Stored-size records have no stat block, and Let's Go and Legends
+            # Arceus use formulas this port does not implement.
+            if stored is None or computed is None or not any(stored):
+                continue
+            if tuple(stored) == tuple(computed):
+                agree[cls] += 1
+            else:
+                disagree[cls] += 1
+                if len(examples) < 10:
+                    examples.append(f"{cls} {entity.species_name} "
+                                    f"lv{entity.current_level}: stored {stored} "
+                                    f"computed {computed}")
+    compared = sum(agree.values()) + sum(disagree.values())
+    assert compared > 200, f"only {compared} party slots carried a stat block"
+    assert sum(agree.values()) > compared * 0.94, (
+        f"{sum(disagree.values())}/{compared} stat blocks disagree:\n  "
+        + "\n  ".join(examples))
+
+    for cls in EXACT_STAT_FORMATS:
+        if agree[cls] + disagree[cls] < 5:
+            continue
+        assert not disagree[cls], (
+            f"{cls} should recompute exactly, but {disagree[cls]} of "
+            f"{agree[cls] + disagree[cls]} disagree:\n  " + "\n  ".join(
+                e for e in examples if e.startswith(cls)))

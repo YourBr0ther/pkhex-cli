@@ -112,6 +112,36 @@ def growth_rate(table: str, species: int) -> int:
     return 0
 
 
+def form_entry(table: str, species: int, form: int) -> int:
+    """Row a species' form occupies, which is the species itself for form 0.
+
+    Alternate forms with their own stats sit past the species rows in the same
+    table; a species that has them points at the first of its extra rows.
+    """
+    entry = personal().get(table)
+    if not entry or not 0 <= species < len(entry["stats"]):
+        return species
+    index = entry.get("form_index")
+    counts = entry.get("form_count")
+    if not index or not counts or form == 0:
+        return species
+    start = index[species]
+    if start <= 0 or form >= counts[species]:
+        return species
+    return start + form - 1
+
+
+def base_stats(table: str, species: int, form: int = 0) -> tuple[int, ...] | None:
+    """Base stats in battle order: HP, ATK, DEF, SPE, SPA, SPD."""
+    entry = personal().get(table)
+    if not entry:
+        return None
+    row = form_entry(table, species, form)
+    if 0 <= row < len(entry["stats"]):
+        return tuple(entry["stats"][row])
+    return None
+
+
 def gender_ratio(table: str, species: int) -> int:
     entry = personal().get(table)
     if entry and 0 <= species < len(entry["gender"]):

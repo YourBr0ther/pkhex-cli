@@ -151,6 +151,9 @@ class PB8(_Gen89Checksum, _L.PB8Layout):
 class PA8(_Gen89Checksum, _L.PA8Layout):
     """Legends: Arceus."""
 
+    # Stats add Ganbaru values, so the shared formula does not apply.
+    STAT_FORMULA = None
+
     FORMAT = 8
     CONTEXT = "gen8a"
     SIZE_STORED = crypto.SIZE_8ASTORED
@@ -204,6 +207,10 @@ class PK7(_G6Base, _L.PK7Layout):
 
 class PB7(_G6Base, _L.PB7Layout):
     """Let's Go Pikachu/Eevee."""
+
+    # Stats add Awakening Values and scale with friendship, so the shared
+    # formula does not apply.
+    STAT_FORMULA = None
 
     FORMAT = 7
     CONTEXT = "gen7b"
@@ -419,6 +426,7 @@ class _GBBase:
     SHINY_SHIFT = 0
     MAX_IV = 15
     MAX_EV = 65535
+    STAT_FORMULA = "gb"
 
     #: Slot marker a Gen2 list uses in place of the species id for an egg.
     SLOT_EGG = 0xFD
@@ -585,6 +593,24 @@ class PK1(_GBBase, _L.PK1Layout):
     SIZE_STORED = crypto.SIZE_1STORED
     SIZE_PARTY = crypto.SIZE_1PARTY
     PERSONAL_TABLE = "rb"
+
+    # Gen1 has one Special stat that later games split in two. PKHeX exposes it
+    # under both names, and writing SpD is a no-op, as it is there.
+    @property
+    def stat_spa(self) -> int:
+        return self.stat_spc
+
+    @stat_spa.setter
+    def stat_spa(self, value: int) -> None:
+        self.stat_spc = value
+
+    @property
+    def stat_spd(self) -> int:
+        return self.stat_spc
+
+    @stat_spd.setter
+    def stat_spd(self, value: int) -> None:
+        pass
 
     @property
     def species(self) -> int:

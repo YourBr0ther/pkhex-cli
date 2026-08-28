@@ -57,6 +57,15 @@ def _derived(entity) -> dict[str, Any]:
     put("EVs", list(entity.evs))
     put("IVTotal", entity.iv_total)
     put("EVTotal", entity.ev_total)
+    put("BaseStats", list(entity.base_stats) if entity.base_stats else None)
+    computed = entity.calculated_stats()
+    if computed is not None:
+        out["CalculatedStats"] = list(computed)
+        # The games recompute only on level-up, so a party block can lag behind
+        # the EVs stored beside it. A boxed Pokemon's block is older still.
+        stored = entity.stored_stats
+        if stored is not None and any(stored):
+            out["StoredStats"] = list(stored)
 
     move_names = [data.lookup("moves", m, language) for m in entity.moves]
     if any(move_names):

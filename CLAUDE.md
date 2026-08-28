@@ -99,16 +99,27 @@ Pokémon has no half-width Latin letters, so writing an ASCII nickname would
 terminate the string at the first character. `Entity._write_name` decodes what
 it just encoded and raises if the text did not survive.
 
+**Base stats depend on the form, not just the species.** Giratina's two forms
+swap Attack with Defense and Sp. Atk with Sp. Def, so a species-only lookup gets
+four of six stats wrong. Alternate-form rows sit past the species rows in the
+same personal table; `data.form_entry` follows the index PKHeX calls
+`FormStatsIndex`.
+
+**A format with its own stat formula returns nothing rather than guessing.**
+Let's Go adds Awakening Values and a friendship scalar, Legends Arceus adds
+Ganbaru values. Both set `STAT_FORMULA = None` so `calculated_stats` returns
+None instead of a plausible wrong answer.
+
 ## Testing
 
 ```sh
-python3 -m pytest tests/ -q          # 46 on a bare clone; the rest skip
+python3 -m pytest tests/ -q          # 52 on a bare clone; the rest skip
 
 git clone --depth 1 https://github.com/kwsch/PKHeX.git reference_PKHeX
-python3 -m pytest tests/ -q          # 74, with the .pkX fixtures
+python3 -m pytest tests/ -q          # 80, with the .pkX fixtures
 
 sh tools/fetch_test_saves.sh         # ~40 MB of real saves from public repos
-python3 -m pytest tests/ -q          # 86, with the save corpus too
+python3 -m pytest tests/ -q          # 93, with the save corpus too
 ```
 
 `PKHEX_REFERENCE` moves the PKHeX checkout, `PKHEXPY_SAVES` moves the save

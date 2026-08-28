@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from pkhexpy.pkm import io, serialize
-from pkhexpy.pkm.formats import ALL_FORMATS, PK9
+from pkhexpy.pkm.formats import ALL_FORMATS, PA8, PB7, PK1, PK9
 
 #: PKHeX names its files "<dex><shiny> - <nickname> - <hex>", so the filename is
 #: an independent check on what the parser reads out of the bytes.
@@ -179,3 +179,77 @@ def test_ivs_pack_into_one_word() -> None:
     entity.ivs = (31, 0, 31, 15, 31, 31)
     assert entity.ivs == (31, 0, 31, 15, 31, 31)
     assert entity.iv32 == 0x3FF7FC1F
+
+
+def test_stats_recompute_for_a_modern_entity() -> None:
+    """A level 50 Pikachu with perfect IVs and no EVs, which is a widely
+    published stat spread."""
+    pk = PK9()
+    pk.species = 25
+    pk.current_level = 50
+    pk.ivs = (31,) * 6
+    pk.evs = (0,) * 6
+    pk.nature = pk.stat_alignment = 0  # Hardy, which changes nothing
+    assert pk.calculated_stats() == (110, 75, 60, 110, 70, 70)
+
+    pk.nature = pk.stat_alignment = 3  # Adamant: +Attack, -Sp. Attack
+    assert pk.calculated_stats() == (110, 82, 60, 110, 63, 70)
+
+
+def test_stats_follow_the_mint_nature_not_the_original() -> None:
+    pk = PK9()
+    pk.species = 25
+    pk.current_level = 50
+    pk.ivs = (31,) * 6
+    pk.evs = (0,) * 6
+    pk.nature = 0
+    pk.stat_alignment = 3
+    assert pk.calculated_stats()[1] == 82
+
+
+def test_shedinja_stays_at_one_hp() -> None:
+    pk = PK9()
+    pk.species = 292
+    pk.current_level = 100
+    pk.ivs = (31,) * 6
+    pk.evs = (252, 0, 0, 0, 0, 0)
+    assert pk.calculated_stats()[0] == 1
+
+
+def test_stats_use_the_form_base_stats() -> None:
+    """Giratina's two forms swap Attack with Defense and Sp. Atk with Sp. Def,
+    so a form-blind lookup gets four of six stats wrong."""
+    altered, origin = PK9(), PK9()
+    for pk, form in ((altered, 0), (origin, 1)):
+        pk.species = 487
+        pk.form = form
+        pk.current_level = 100
+        pk.ivs = (0,) * 6
+        pk.evs = (0,) * 6
+        pk.nature = pk.stat_alignment = 0
+    a, o = altered.calculated_stats(), origin.calculated_stats()
+    assert a[0] == o[0], "HP is the same in both forms"
+    assert (a[1], a[2], a[4], a[5]) == (o[2], o[1], o[5], o[4])
+
+
+def test_gameboy_stats_use_stat_experience() -> None:
+    """Reproduces a Dratini from a real Red cartridge save, whose stored stat
+    block was written at level 99 with no stat experience."""
+    pk = PK1()
+    pk.species = 147
+    pk.current_level = 99
+    # DV16 packs the Attack, Defense, Speed and Special DVs as four nibbles.
+    pk.dv16 = (9 << 12) | (6 << 8) | (10 << 4) | 5
+    pk.ev_hp = pk.ev_atk = pk.ev_def = pk.ev_spe = pk.ev_spc = 0
+    assert pk.ivs == (9, 9, 6, 10, 5, 5)
+    assert pk.calculated_stats() == (208, 149, 105, 123, 113, 113)
+
+
+def test_formats_with_their_own_formula_do_not_guess() -> None:
+    """Let's Go and Legends Arceus add stat systems this port does not model,
+    so they return nothing rather than a plausible wrong answer."""
+    for cls in (PB7, PA8):
+        pk = cls()
+        pk.species = 25
+        pk.current_level = 50
+        assert pk.calculated_stats() is None

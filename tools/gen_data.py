@@ -114,38 +114,69 @@ def build_experience() -> None:
     print(f"{path}: 6 growth tables")
 
 
-# Per-game personal table: file stem -> (record size, growth offset, gender offset).
+# Per-game personal table layout. Stat offsets are listed in the order the games
+# use for battle stats: HP, ATK, DEF, SPE, SPA, SPD. Gen1 has one Special stat
+# standing in for both SPA and SPD.
+GEN1_STATS = (0x01, 0x02, 0x03, 0x04, 0x05, 0x05)
+GEN2_STATS = (0x01, 0x02, 0x03, 0x04, 0x05, 0x06)
+MODERN_STATS = (0x00, 0x01, 0x02, 0x03, 0x04, 0x05)
+
+#: Per-table entry size and field offsets. "forms" is the offset pair for the
+#: form-entry index and the form count, absent in the games that have no form
+#: entries. Form entries live past the species entries in the same table, so a
+#: species with forms points at the first of its extra rows.
 PERSONAL = {
-    "rb":   (0x1C, 0x13, 0x00), "y":    (0x1C, 0x13, 0x00),
-    "gs":   (0x20, 0x16, 0x0D), "c":    (0x20, 0x16, 0x0D),
-    "rs":   (0x1C, 0x13, 0x10), "e":    (0x1C, 0x13, 0x10),
-    "fr":   (0x1C, 0x13, 0x10), "lg":   (0x1C, 0x13, 0x10),
-    "dp":   (0x2C, 0x13, 0x10), "pt":   (0x2C, 0x13, 0x10),
-    "hgss": (0x2C, 0x13, 0x10),
-    "bw":   (0x3C, 0x15, 0x12), "b2w2": (0x4C, 0x15, 0x12),
-    "xy":   (0x40, 0x15, 0x12), "ao":   (0x50, 0x15, 0x12),
-    "sm":   (0x54, 0x15, 0x12), "uu":   (0x54, 0x15, 0x12),
-    "gg":   (0x54, 0x15, 0x12),
-    "swsh": (0xB0, 0x15, 0x12), "la":   (0xB0, 0x15, 0x12),
-    "bdsp": (0x44, 0x15, 0x12),
-    "sv":   (0x50, 0x0F, 0x0C), "za":   (0x50, 0x0F, 0x0C),
+    "rb":   dict(size=0x1C, growth=0x13, gender=0x00, stats=GEN1_STATS),
+    "y":    dict(size=0x1C, growth=0x13, gender=0x00, stats=GEN1_STATS),
+    "gs":   dict(size=0x20, growth=0x16, gender=0x0D, stats=GEN2_STATS),
+    "c":    dict(size=0x20, growth=0x16, gender=0x0D, stats=GEN2_STATS),
+    "rs":   dict(size=0x1C, growth=0x13, gender=0x10, stats=MODERN_STATS),
+    "e":    dict(size=0x1C, growth=0x13, gender=0x10, stats=MODERN_STATS),
+    "fr":   dict(size=0x1C, growth=0x13, gender=0x10, stats=MODERN_STATS),
+    "lg":   dict(size=0x1C, growth=0x13, gender=0x10, stats=MODERN_STATS),
+    "dp":   dict(size=0x2C, growth=0x13, gender=0x10, stats=MODERN_STATS, forms=(0x2A, 0x29)),
+    "pt":   dict(size=0x2C, growth=0x13, gender=0x10, stats=MODERN_STATS, forms=(0x2A, 0x29)),
+    "hgss": dict(size=0x2C, growth=0x13, gender=0x10, stats=MODERN_STATS, forms=(0x2A, 0x29)),
+    "bw":   dict(size=0x3C, growth=0x15, gender=0x12, stats=MODERN_STATS, forms=(0x1C, 0x20)),
+    "b2w2": dict(size=0x4C, growth=0x15, gender=0x12, stats=MODERN_STATS, forms=(0x1C, 0x20)),
+    "xy":   dict(size=0x40, growth=0x15, gender=0x12, stats=MODERN_STATS, forms=(0x1C, 0x20)),
+    "ao":   dict(size=0x50, growth=0x15, gender=0x12, stats=MODERN_STATS, forms=(0x1C, 0x20)),
+    "sm":   dict(size=0x54, growth=0x15, gender=0x12, stats=MODERN_STATS, forms=(0x1C, 0x20)),
+    "uu":   dict(size=0x54, growth=0x15, gender=0x12, stats=MODERN_STATS, forms=(0x1C, 0x20)),
+    "gg":   dict(size=0x54, growth=0x15, gender=0x12, stats=MODERN_STATS, forms=(0x1C, 0x20)),
+    "swsh": dict(size=0xB0, growth=0x15, gender=0x12, stats=MODERN_STATS, forms=(0x1E, 0x20)),
+    "la":   dict(size=0xB0, growth=0x15, gender=0x12, stats=MODERN_STATS, forms=(0x1E, 0x20)),
+    "bdsp": dict(size=0x44, growth=0x15, gender=0x12, stats=MODERN_STATS, forms=(0x1E, 0x20)),
+    "sv":   dict(size=0x50, growth=0x0F, gender=0x0C, stats=MODERN_STATS, forms=(0x18, 0x1A)),
+    "za":   dict(size=0x50, growth=0x0F, gender=0x0C, stats=MODERN_STATS, forms=(0x18, 0x1A)),
 }
 
 
 def build_personal() -> None:
     source = REF / "Resources/byte/personal"
-    bundle: dict[str, dict[str, list[int]]] = {}
-    for stem, (size, growth_off, gender_off) in PERSONAL.items():
+    bundle: dict[str, dict[str, list]] = {}
+    for stem, spec in PERSONAL.items():
         path = source / f"personal_{stem}"
         if not path.exists():
             print(f"  skipped personal_{stem} (missing)")
             continue
         raw = path.read_bytes()
+        size = spec["size"]
         count = len(raw) // size
-        bundle[stem] = {
-            "growth": [raw[i * size + growth_off] for i in range(count)],
-            "gender": [raw[i * size + gender_off] for i in range(count)],
+        entry = {
+            "growth": [raw[i * size + spec["growth"]] for i in range(count)],
+            "gender": [raw[i * size + spec["gender"]] for i in range(count)],
+            "stats": [[raw[i * size + off] for off in spec["stats"]]
+                      for i in range(count)],
         }
+        forms = spec.get("forms")
+        if forms:
+            index_off, count_off = forms
+            entry["form_index"] = [
+                int.from_bytes(raw[i * size + index_off:i * size + index_off + 2],
+                               "little") for i in range(count)]
+            entry["form_count"] = [raw[i * size + count_off] for i in range(count)]
+        bundle[stem] = entry
     out = OUT / "personal.json"
     out.write_text(json.dumps(bundle, separators=(",", ":")))
     print(f"{out}: {len(bundle)} game tables")

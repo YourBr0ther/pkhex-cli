@@ -20,7 +20,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import corpus
 from pkhexpy import saves
 from pkhexpy.pkm import io as entity_io
 
@@ -106,10 +108,7 @@ def main() -> int:
     entities = []
     per_format = collections.Counter()
     for root in args.roots:
-        paths = sorted(p for p in root.rglob("*") if p.is_file())
-        for path in paths:
-            if ".git" in path.parts:
-                continue
+        for path in corpus.find_saves(root):
             raw = path.read_bytes()
             try:
                 sav = saves.from_bytes(raw)

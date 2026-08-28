@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import datetime as _dt
+import math
 from typing import Any
 from collections.abc import Callable, Iterable
 
@@ -157,6 +158,76 @@ class Entity(LayoutBase):
             return ()
         return (self.relearn_move1, self.relearn_move2,
                 self.relearn_move3, self.relearn_move4)
+
+    # --- battle stats ---------------------------------------------------------
+
+    #: Which stat formula this format uses. "modern" is Gen3 onward, "gb" is the
+    #: Game Boy games. Formats with their own scheme opt out with None: Let's Go
+    #: adds Awakening Values and a friendship scalar, and Legends Arceus adds
+    #: Ganbaru values.
+    STAT_FORMULA: str | None = "modern"
+
+    @property
+    def base_stats(self) -> tuple[int, ...] | None:
+        return data.base_stats(self.PERSONAL_TABLE, self.species,
+                               int(getattr(self, "form", 0) or 0))
+
+    def hyper_trained(self, index: int) -> bool:
+        """Whether a stat has been hyper trained, which treats its IV as 31."""
+        name = ("ht_hp", "ht_atk", "ht_def", "ht_spe", "ht_spa", "ht_spd")[index]
+        return bool(getattr(self, name, False))
+
+    def calculated_stats(self) -> tuple[int, ...] | None:
+        """Recompute battle stats from base stats, IVs, EVs, level and nature.
+
+        The games store the result alongside the inputs, so comparing the two is
+        a check on all of them at once. Returns None when this format uses a
+        formula that is not implemented, or its base stats are unknown.
+        """
+        base = self.base_stats
+        if base is None or self.STAT_FORMULA is None:
+            return None
+        level = self.current_level
+        ivs, evs = self.ivs, self.evs
+
+        if self.STAT_FORMULA == "gb":
+            # Gen1/2 use stat experience, folded in via its square root.
+            stats = []
+            for i in range(6):
+                effort = math.ceil(math.sqrt(evs[i])) if evs[i] > 0 else 0
+                effort = min(255, effort) >> 2
+                value = ((2 * (base[i] + ivs[i]) + effort) * level // 100) + 5
+                stats.append(value)
+            stats[0] += 5 + level  # HP gets a second flat +5 plus the level
+            return tuple(stats)
+
+        stats = [0] * 6
+        iv_hp = 31 if self.hyper_trained(0) else ivs[0]
+        # A base HP of 1 means Shedinja, which is always at 1 HP.
+        stats[0] = 1 if base[0] == 1 else (
+            ((iv_hp + 2 * base[0] + evs[0] // 4 + 100) * level // 100) + 10)
+        for i in range(1, 6):
+            iv = 31 if self.hyper_trained(i) else ivs[i]
+            stats[i] = ((iv + 2 * base[i] + evs[i] // 4) * level // 100) + 5
+
+        # Nature raises one stat by 10% and lowers another by the same.
+        # A Nature Mint stores its nature separately and the stats follow it.
+        nature = int(getattr(self, "stat_alignment", None) or self.nature)
+        if 0 <= nature < 25:
+            up, down = divmod(nature, 5)
+            if up != down:
+                stats[up + 1] = stats[up + 1] * 11 // 10
+                stats[down + 1] = stats[down + 1] * 9 // 10
+        return tuple(stats)
+
+    @property
+    def stored_stats(self) -> tuple[int, ...] | None:
+        """The stats the game wrote, present only on party-sized records."""
+        try:
+            return (self.stat_hp_max, self.stat_atk, self.stat_def,
+                    self.stat_spe, self.stat_spa, self.stat_spd)
+        except AttributeError:
+            return None
 
     # --- dates --------------------------------------------------------------
 
