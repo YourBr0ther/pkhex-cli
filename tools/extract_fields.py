@@ -329,9 +329,45 @@ def collapse_multiline_properties(text: str) -> str:
     return MULTILINE_PROPERTY_RE.sub(repl, text)
 
 
+#: "private const int StringLength = 12;" and its siblings. SK2 sizes both of
+#: its name buffers from one of these rather than repeating the number.
+CONST_RE = re.compile(
+    r"^\s*(?:public|private|internal|protected)\s+const\s+"
+    r"(?:byte|sbyte|ushort|short|uint|int|ulong|long)\s+"
+    rf"(?P<name>\w+)\s*=\s*(?P<value>{HEX})\s*;",
+    re.M,
+)
+
+
+def substitute_constants(source: str) -> str:
+    """Replace file-local numeric constants with their values.
+
+    An offset or a length written as a named constant is still an offset or a
+    length, but every pattern below matches digits. Resolving the names first
+    means one more property is generated instead of reported unhandled.
+    """
+    constants = {m.group("name"): m.group("value")
+                 for m in CONST_RE.finditer(source)}
+    if not constants:
+        return source
+    names = "|".join(re.escape(n) for n in constants)
+    # Skip the declarations themselves; rewriting "const int X = 12" to
+    # "const int 12 = 12" would not parse on a re-read.
+    declarations = {m.start() for m in CONST_RE.finditer(source)}
+
+    def repl(m: re.Match[str]) -> str:
+        line_start = source.rfind("\n", 0, m.start()) + 1
+        if line_start in declarations:
+            return m.group(0)
+        return constants[m.group(0)]
+
+    return re.sub(rf"\b(?:{names})\b", repl, source)
+
+
 def extract(path: Path) -> tuple[list[FieldSpec], list[tuple[str, str]]]:
     candidates: list[tuple[str, str, str, bool, str]] = []
-    source = collapse_multiline_properties(path.read_text(encoding="utf-8"))
+    source = substitute_constants(
+        collapse_multiline_properties(path.read_text(encoding="utf-8")))
     for raw in source.splitlines():
         line = re.sub(r"//.*$", "", raw).rstrip()
         m = PROPERTY_RE.match(line)

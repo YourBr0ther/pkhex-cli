@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from pkhexpy.pkm import io, serialize
-from pkhexpy.pkm.formats import ALL_FORMATS, PA8, PB7, PK1, PK9
+from pkhexpy.pkm.formats import ALL_FORMATS, PA8, PB7, PK1, PK2, PK9, SK2
 
 #: PKHeX names its files "<dex><shiny> - <nickname> - <hex>", so the filename is
 #: an independent check on what the parser reads out of the bytes.
@@ -253,3 +253,44 @@ def test_formats_with_their_own_formula_do_not_guess() -> None:
         pk.species = 25
         pk.current_level = 50
         assert pk.calculated_stats() is None
+
+
+def test_every_format_reads_its_derived_properties() -> None:
+    """A format that parses but cannot answer these is unusable.
+
+    SK2 shipped this way: it had the fields but none of the Game Boy plumbing,
+    so `ivs`, `evs` and `is_shiny` all raised and exporting one to JSON died on
+    the first derived value. PKHeX has no .sk2 fixture, so nothing noticed.
+    """
+    for cls in ALL_FORMATS:
+        entity = cls()
+        entity.species = 25
+        assert len(entity.ivs) == 6, cls.__name__
+        assert len(entity.evs) == 6, cls.__name__
+        assert isinstance(entity.is_shiny, bool), cls.__name__
+        assert entity.current_level >= 1, cls.__name__
+        # Every format must reach a document without raising, whether or not
+        # it can recompute stats.
+        serialize.to_dict(entity, include_raw=False)
+
+
+def test_gameboy_formats_agree_on_their_limits() -> None:
+    """Stadium 2 is a Gen2 record and has to be configured like one.
+
+    It was left on the Gen3-onward stat formula with a 252 EV cap, which would
+    have returned six plausible wrong numbers for a record holding Gen2 stat
+    experience.
+    """
+    for cls in (PK1, PK2, SK2):
+        assert cls.STAT_FORMULA == "gb", cls.__name__
+        assert cls.MAX_IV == 15, cls.__name__
+        assert cls.MAX_EV == 65535, cls.__name__
+
+
+def test_stadium_names_live_inside_the_record() -> None:
+    pk = SK2()
+    pk.species = 25
+    pk.nickname = "SPARKY"
+    pk.original_trainer_name = "ASH"
+    assert io.from_bytes(io.to_bytes(pk), extension="sk2").nickname == "SPARKY"
+    assert pk.original_trainer_name == "ASH"

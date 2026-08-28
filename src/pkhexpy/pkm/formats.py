@@ -415,86 +415,23 @@ class XK3(_Gen3Form, _PIDDerived, _L.XK3Layout):
 # --------------------------------------------------------------------------
 
 
-class _GBBase:
-    """Gen1/2 keep the nickname and trainer name outside the record.
+class _GBStats:
+    """Shared Game Boy record behaviour, independent of where the names live.
 
-    The game stores them in parallel arrays alongside the party or box list. To
-    keep one entity in one buffer, this port appends both strings after the
-    record body, in the order the list uses: trainer name, then nickname.
+    Port of ``PKHeX.Core.GBPKM``. Gen1 and Gen2 store four DVs rather than six
+    IVs, keep one Special stat where later games keep two, and have no
+    personality value at all, so shininess and Unown's form are read out of the
+    DVs. Stat experience replaces effort values and runs to 65535.
+
+    ``PK1`` and ``PK2`` reach this through :class:`_GBBase`, which adds the name
+    buffers those two need. ``SK2`` stores its names inside the record and
+    inherits from here directly.
     """
 
     SHINY_SHIFT = 0
     MAX_IV = 15
     MAX_EV = 65535
     STAT_FORMULA = "gb"
-
-    #: Slot marker a Gen2 list uses in place of the species id for an egg.
-    SLOT_EGG = 0xFD
-
-    _INSTANCE_ATTRS = frozenset({"data", "japanese", "string_length", "is_egg"})
-
-    def __init__(self, data: bytes | bytearray | None = None, *,
-                 japanese: bool = False, is_egg: bool = False) -> None:
-        object.__setattr__(self, "string_length",
-                           STRING_LENGTH_JAPANESE if japanese
-                           else STRING_LENGTH_INTERNATIONAL)
-        # Gen1/2 record the egg state in the list slot marker, not the record.
-        object.__setattr__(self, "is_egg", is_egg)
-        super().__init__(data, japanese=japanese)
-        # The base class sizes to SIZE_PARTY, which stops short of the two name
-        # buffers this port appends. Without this a fresh record writes its
-        # nickname over the trainer name.
-        wanted = self.buffer_size(japanese)
-        if len(self.data) < wanted:
-            self.data.extend(bytes(wanted - len(self.data)))
-
-    @property
-    def MAX_STRING_LENGTH_NICKNAME(self) -> int:
-        return 5 if self.japanese else 10
-
-    @property
-    def MAX_STRING_LENGTH_TRAINER(self) -> int:
-        return 5 if self.japanese else 7
-
-    def clone(self):
-        return type(self)(bytes(self.data), japanese=self.japanese, is_egg=self.is_egg)
-
-    @classmethod
-    def buffer_size(cls, japanese: bool) -> int:
-        length = STRING_LENGTH_JAPANESE if japanese else STRING_LENGTH_INTERNATIONAL
-        return cls.SIZE_PARTY + 2 * length
-
-    def _string_slice(self, index: int) -> slice:
-        start = self.SIZE_PARTY + index * self.string_length
-        return slice(start, start + self.string_length)
-
-    @property
-    def original_trainer_trash(self) -> bytes:
-        return bytes(self.data[self._string_slice(0)])
-
-    @property
-    def nickname_trash(self) -> bytes:
-        return bytes(self.data[self._string_slice(1)])
-
-    @property
-    def original_trainer_name(self) -> str:
-        return self.decode_string(self.original_trainer_trash)
-
-    @original_trainer_name.setter
-    def original_trainer_name(self, value: str) -> None:
-        buffer = self.encode_name(self.string_length, value,
-                                  self.MAX_STRING_LENGTH_TRAINER)
-        self.data[self._string_slice(0)] = buffer
-
-    @property
-    def nickname(self) -> str:
-        return self.decode_string(self.nickname_trash)
-
-    @nickname.setter
-    def nickname(self, value: str) -> None:
-        buffer = self.encode_name(self.string_length, value,
-                                  self.MAX_STRING_LENGTH_NICKNAME)
-        self.data[self._string_slice(1)] = buffer
 
     # Gen1/2 pack four 4-bit DVs into one big-endian word.
     @property
@@ -603,6 +540,82 @@ class _GBBase:
         return self.tid16
 
 
+class _GBBase(_GBStats):
+    """Gen1/2 keep the nickname and trainer name outside the record.
+
+    The game stores them in parallel arrays alongside the party or box list. To
+    keep one entity in one buffer, this port appends both strings after the
+    record body, in the order the list uses: trainer name, then nickname.
+    """
+
+    #: Slot marker a Gen2 list uses in place of the species id for an egg.
+    SLOT_EGG = 0xFD
+
+    _INSTANCE_ATTRS = frozenset({"data", "japanese", "string_length", "is_egg"})
+
+    def __init__(self, data: bytes | bytearray | None = None, *,
+                 japanese: bool = False, is_egg: bool = False) -> None:
+        object.__setattr__(self, "string_length",
+                           STRING_LENGTH_JAPANESE if japanese
+                           else STRING_LENGTH_INTERNATIONAL)
+        # Gen1/2 record the egg state in the list slot marker, not the record.
+        object.__setattr__(self, "is_egg", is_egg)
+        super().__init__(data, japanese=japanese)
+        # The base class sizes to SIZE_PARTY, which stops short of the two name
+        # buffers this port appends. Without this a fresh record writes its
+        # nickname over the trainer name.
+        wanted = self.buffer_size(japanese)
+        if len(self.data) < wanted:
+            self.data.extend(bytes(wanted - len(self.data)))
+
+    @property
+    def MAX_STRING_LENGTH_NICKNAME(self) -> int:
+        return 5 if self.japanese else 10
+
+    @property
+    def MAX_STRING_LENGTH_TRAINER(self) -> int:
+        return 5 if self.japanese else 7
+
+    def clone(self):
+        return type(self)(bytes(self.data), japanese=self.japanese, is_egg=self.is_egg)
+
+    @classmethod
+    def buffer_size(cls, japanese: bool) -> int:
+        length = STRING_LENGTH_JAPANESE if japanese else STRING_LENGTH_INTERNATIONAL
+        return cls.SIZE_PARTY + 2 * length
+
+    def _string_slice(self, index: int) -> slice:
+        start = self.SIZE_PARTY + index * self.string_length
+        return slice(start, start + self.string_length)
+
+    @property
+    def original_trainer_trash(self) -> bytes:
+        return bytes(self.data[self._string_slice(0)])
+
+    @property
+    def nickname_trash(self) -> bytes:
+        return bytes(self.data[self._string_slice(1)])
+
+    @property
+    def original_trainer_name(self) -> str:
+        return self.decode_string(self.original_trainer_trash)
+
+    @original_trainer_name.setter
+    def original_trainer_name(self, value: str) -> None:
+        buffer = self.encode_name(self.string_length, value,
+                                  self.MAX_STRING_LENGTH_TRAINER)
+        self.data[self._string_slice(0)] = buffer
+
+    @property
+    def nickname(self) -> str:
+        return self.decode_string(self.nickname_trash)
+
+    @nickname.setter
+    def nickname(self, value: str) -> None:
+        buffer = self.encode_name(self.string_length, value,
+                                  self.MAX_STRING_LENGTH_NICKNAME)
+        self.data[self._string_slice(1)] = buffer
+
 class PK1(_GBBase, _L.PK1Layout):
     """Red/Blue/Yellow."""
 
@@ -668,18 +681,25 @@ class PK2(_GBBase, _L.PK2Layout):
         self.data[0x08:0x0B] = int(value).to_bytes(3, "big")
 
 
-class SK2(_L.SK2Layout):
-    """Stadium 2 storage."""
+class SK2(_GBStats, _L.SK2Layout):
+    """Stadium 2 storage.
+
+    A Gen2 record with the two names kept inside it, at 0x24 and 0x30, rather
+    than in the parallel arrays the handheld games use. That is the whole
+    difference, so everything else comes from :class:`_GBStats`: four DVs, one
+    Special stat, stat experience, and no personality value.
+    """
 
     FORMAT = 2
     CONTEXT = "gen2"
     SIZE_STORED = crypto.SIZE_2STADIUM
     SIZE_PARTY = crypto.SIZE_2STADIUM
-    SHINY_SHIFT = 0
-    MAX_IV = 15
     PERSONAL_TABLE = "c"
-    MAX_STRING_LENGTH_NICKNAME = 10
-    MAX_STRING_LENGTH_TRAINER = 7
+    LOCATION_CONTEXT = "gen2"
+    LOCATION_GAME = "gsc"
+    #: Both buffers are twelve bytes, wide enough for either language.
+    MAX_STRING_LENGTH_NICKNAME = 12
+    MAX_STRING_LENGTH_TRAINER = 12
 
 
 ALL_FORMATS: tuple[type, ...] = (
