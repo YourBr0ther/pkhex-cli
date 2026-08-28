@@ -535,21 +535,39 @@ class _GBBase:
         return (((self.iv_atk & 1) << 3) | ((self.iv_def & 1) << 2)
                 | ((self.iv_spe & 1) << 1) | (self.iv_spc & 1))
 
+    # Gen1 and Gen2 have one Special value where later games have two, so both
+    # names read it and writing either one writes it, the way PKHeX does.
     @property
     def iv_spa(self) -> int:
         return self.iv_spc
+
+    @iv_spa.setter
+    def iv_spa(self, value: int) -> None:
+        self.iv_spc = value
 
     @property
     def iv_spd(self) -> int:
         return self.iv_spc
 
+    @iv_spd.setter
+    def iv_spd(self, value: int) -> None:
+        self.iv_spc = value
+
     @property
     def ev_spa(self) -> int:
         return self.ev_spc
 
+    @ev_spa.setter
+    def ev_spa(self, value: int) -> None:
+        self.ev_spc = value
+
     @property
     def ev_spd(self) -> int:
         return self.ev_spc
+
+    @ev_spd.setter
+    def ev_spd(self, value: int) -> None:
+        self.ev_spc = value
 
     @property
     def form(self) -> int:

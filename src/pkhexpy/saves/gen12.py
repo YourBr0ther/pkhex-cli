@@ -13,7 +13,7 @@ from ..binio import read_u16, read_u16_be, write_u16, write_u16_be
 from ..pkm.formats import (
     PK1, PK2, STRING_LENGTH_INTERNATIONAL, STRING_LENGTH_JAPANESE,
 )
-from .base import SaveFile
+from .base import ExtraRegion, SaveFile
 
 SIZE_G1RAW = 0x8000
 SIZE_G2RAW_U = 0x8000
@@ -254,6 +254,75 @@ class SAVGB(SaveFile):
         self._pack(self.PARTY_OFFSET, self.PARTY_SLOT_COUNT,
                    self.SIZE_PARTY_SLOT, slot, entity)
 
+    # --- daycare -------------------------------------------------------------
+
+    #: Offset of the daycare region, or None when this variant is unmapped.
+    DAYCARE_OFFSET: int | None = None
+    #: Records in it, counting the Gen2 egg slot.
+    DAYCARE_SLOT_COUNT = 1
+
+    def extra_regions(self) -> tuple[ExtraRegion, ...]:
+        if self.DAYCARE_OFFSET is None:
+            return ()
+        return (ExtraRegion("daycare", self.DAYCARE_SLOT_COUNT, 0),)
+
+    def _daycare_slot_offset(self, index: int) -> int:
+        raise NotImplementedError
+
+    def _daycare_occupied(self, index: int) -> bool:
+        raise NotImplementedError
+
+    def _read_nob(self, offset: int, *, is_egg: bool = False):
+        """Read a record the games store as nickname, then OT, then body.
+
+        Boxes and the party pack their names into runs shared by every slot,
+        but a daycare holds one Pokemon, so the games write its two names
+        immediately in front of it instead.
+        """
+        length = self.string_length
+        size = self.SIZE_BOXSLOT
+        nick = self.data[offset:offset + length]
+        trainer = self.data[offset + length:offset + 2 * length]
+        body = bytes(self.data[offset + 2 * length:offset + 2 * length + size])
+        if len(body) < size or not self.slot_present(body):
+            return None
+        buffer = bytearray(self.ENTITY.SIZE_PARTY + 2 * length)
+        buffer[:size] = body
+        buffer[self.ENTITY.SIZE_PARTY:self.ENTITY.SIZE_PARTY + length] = trainer
+        buffer[self.ENTITY.SIZE_PARTY + length:] = nick
+        entity = self.ENTITY(buffer, japanese=self.japanese, is_egg=is_egg)
+        return entity if entity.species else None
+
+    def _write_nob(self, offset: int, entity) -> None:
+        length = self.string_length
+        size = self.SIZE_BOXSLOT
+        raw = bytes(entity.data)
+        names = entity.SIZE_PARTY
+        self.data[offset:offset + length] = raw[names + length:names + 2 * length]
+        self.data[offset + length:offset + 2 * length] = raw[names:names + length]
+        self.data[offset + 2 * length:offset + 2 * length + size] = \
+            raw[:size].ljust(size, b"\0")
+
+    def get_extra_slot(self, kind: str, index: int = 0):
+        self._find_region(kind, index)
+        if not self._daycare_occupied(index):
+            return None
+        entity = self._read_nob(self._daycare_slot_offset(index),
+                                is_egg=index == self.DAYCARE_SLOT_COUNT - 1
+                                and self.GENERATION == 2)
+        if entity is None or entity.species_name is None:
+            return None
+        return entity
+
+    def set_extra_slot(self, kind: str, index: int, entity) -> None:
+        self._find_region(kind, index)
+        self._check_entity(entity)
+        if entity is None:
+            raise NotImplementedError(
+                f"{self.GAME} needs its daycare flags cleared as well; "
+                "removing a Pokemon from the daycare is not supported")
+        self._write_nob(self._daycare_slot_offset(index), entity)
+
     # --- trainer -------------------------------------------------------------
 
     @property
@@ -289,13 +358,24 @@ class SAV1(SAVGB):
     OFFSETS_INT: ClassVar[dict[str, int]] = {
         "money": 0x25F3, "tid": 0x2605, "current_box_index": 0x284C,
         "play_time": 0x2CED, "party": 0x2F2C, "current_box": 0x30C0,
-        "checksum": 0x3523,
+        "checksum": 0x3523, "daycare": 0x2CF4,
     }
     OFFSETS_JPN: ClassVar[dict[str, int]] = {
         "money": 0x25EE, "tid": 0x25FB, "current_box_index": 0x2842,
         "play_time": 0x2CA0, "party": 0x2ED5, "current_box": 0x302D,
-        "checksum": 0x3594,
+        "checksum": 0x3594, "daycare": 0x2CA7,
     }
+
+    @property
+    def DAYCARE_OFFSET(self) -> int:
+        return self.offsets["daycare"]
+
+    def _daycare_slot_offset(self, index: int) -> int:
+        # A status byte, then the single record.
+        return self.offsets["daycare"] + 1
+
+    def _daycare_occupied(self, index: int) -> bool:
+        return self.data[self.offsets["daycare"]] == 1
 
     def __init__(self, data: bytes | bytearray, *, japanese: bool = False) -> None:
         super().__init__(data, japanese=japanese)
@@ -366,21 +446,64 @@ class SAV2(SAVGB):
     BOX_COUNTS = (9, 14)
     BOX_COUNT = 14
 
-    #: (money, current box index, party, current box, checksum end, checksum 1, checksum 2)
+    #: (money, current box index, party, current box, checksum end, checksum 1,
+    #: checksum 2, daycare). The daycare sits a fixed 0x3C past the start of the
+    #: Pokedex-seen flags, which is where PKHeX derives it from too.
     VARIANTS: ClassVar[dict[tuple[str, bool], dict]] = {
         ("gs", False): dict(money=0x23DB, current_box_index=0x2724, party=0x288A,
                             current_box=0x2D6C, play_time=0x2053, gender=None,
-                            checksum_end=0x2D68, checksum1=0x2D69, checksum2=0x7E6D),
+                            checksum_end=0x2D68, checksum1=0x2D69, checksum2=0x7E6D,
+                            daycare=0x2A6C + 0x3C),
         ("c", False): dict(money=0x23DC, current_box_index=0x2700, party=0x2865,
                            current_box=0x2D10, play_time=0x2052, gender=0x3E3D,
-                           checksum_end=0x2B82, checksum1=0x2D0D, checksum2=0x1F0D),
+                           checksum_end=0x2B82, checksum1=0x2D0D, checksum2=0x1F0D,
+                           daycare=0x2A47 + 0x3C),
         ("gs", True): dict(money=0x23BC, current_box_index=0x2705, party=0x283E,
                            current_box=0x2D10, play_time=0x2034, gender=None,
-                           checksum_end=0x2C8B, checksum1=0x2D0D, checksum2=0x7F0D),
+                           checksum_end=0x2C8B, checksum1=0x2D0D, checksum2=0x7F0D,
+                           daycare=0x29EE + 0x3C),
         ("c", True): dict(money=0x23BE, current_box_index=0x26E2, party=0x281A,
                           current_box=0x2D10, play_time=0x2034, gender=0x8000,
-                          checksum_end=0x2AE2, checksum1=0x2D0D, checksum2=0x7F0D),
+                          checksum_end=0x2AE2, checksum1=0x2D0D, checksum2=0x7F0D,
+                          daycare=0x29CA + 0x3C),
     }
+
+    #: Two parents and the egg they produced.
+    DAYCARE_SLOT_COUNT = 3
+
+    @property
+    def DAYCARE_OFFSET(self) -> int:
+        return self.offsets["daycare"]
+
+    def _daycare_record_size(self) -> int:
+        return 2 * self.string_length + self.SIZE_BOXSLOT
+
+    def _daycare_slot_offset(self, index: int) -> int:
+        # A status byte, then the first record. The second is preceded by three
+        # more bytes of breeding state, and the egg follows it immediately.
+        offset = self.offsets["daycare"] + 1
+        if index >= 1:
+            offset += self._daycare_record_size() + 3
+        if index >= 2:
+            offset += self._daycare_record_size()
+        return offset
+
+    #: Bit of the daycare status byte that means a Pokemon is in the slot.
+    #: PKHeX tests bit 0 instead, which answers a different question: across
+    #: the corpus bit 0 is set in only some occupied daycares, while bit 7 is
+    #: set in every one and in none of the empty ones. The eggs settle it, a
+    #: Hitmontop and Ditto pair sitting behind a Tyrogue and a Sandshrew and
+    #: Swinub pair behind a Swinub, so those parents are really there.
+    DAYCARE_OCCUPIED_BIT = 0x80
+
+    def _daycare_occupied(self, index: int) -> bool:
+        if index == 2:
+            # The egg has no status byte; it is there when a record is.
+            return True
+        flag = self.offsets["daycare"]
+        if index == 1:
+            flag += self._daycare_record_size() + 1
+        return bool(self.data[flag] & self.DAYCARE_OCCUPIED_BIT)
 
     def __init__(self, data: bytes | bytearray, *, japanese: bool = False,
                  crystal: bool = False) -> None:

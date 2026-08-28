@@ -11,6 +11,7 @@ import pytest
 
 from pkhexpy import binio, saves
 from pkhexpy.binio import write_u16, write_u32
+from pkhexpy.pkm import formats
 from pkhexpy.pkm import io as entity_io
 from pkhexpy.saves import base, gen3, gen89, swish
 from pkhexpy.saves.gen3 import FOOTER_COUNTER, FOOTER_ID, SIZE_MAIN, SIZE_SECTOR
@@ -576,3 +577,51 @@ def test_width_generic_reads_and_writes_refuse_to_run_past_the_end() -> None:
             binio.read_int(buffer, offset, 4)
         with pytest.raises(IndexError):
             binio.write_int(buffer, offset, 4, 0)
+
+
+def test_gameboy_daycare_eggs_match_their_parents(real_saves: list[Path]) -> None:
+    """Gen1 and Gen2 store the daycare as a scattered record, nickname and OT
+    written in front of the body rather than pooled with the box names, so a
+    wrong offset here still decodes to something.
+
+    The egg is the check that cannot be faked: it has to be a species those two
+    parents could actually produce.
+    """
+    #: Egg species each parent pair in the corpus must produce.
+    expected = {
+        frozenset({"Hitmontop", "Ditto"}): "Tyrogue",
+        frozenset({"Sandshrew", "Swinub"}): "Swinub",
+        frozenset({"Abra", "Jynx"}): "Smoochum",
+        frozenset({"Eevee", "Houndour"}): "Houndour",
+    }
+    checked = 0
+    for path in real_saves:
+        try:
+            sav = saves.from_bytes(path.read_bytes())
+        except saves.SaveFormatError:
+            continue
+        if sav.GENERATION != 2:
+            continue
+        found = {slot.index: entity for slot, entity in sav.iter_extra()}
+        if set(found) != {0, 1, 2}:
+            continue
+        parents = frozenset(found[i].species_name for i in (0, 1))
+        egg = expected.get(parents)
+        if egg is None:
+            continue
+        assert found[2].species_name == egg, (
+            f"{path.name}: {sorted(parents)} produced {found[2].species_name}")
+        assert found[2].current_level == 5, "a Gen2 egg hatches at level 5"
+        checked += 1
+    assert checked >= 3, f"only {checked} daycare pairs were checked"
+
+
+def test_gameboy_special_stat_is_writable_under_both_names(
+        entity_files: list[Path]) -> None:
+    """Gen1 and Gen2 have one Special value where later games have two. Both
+    names read it, so both must write it."""
+    entity = formats.PK2()
+    entity.ev_spa = 111
+    assert entity.ev_spd == entity.ev_spc == 111
+    entity.ev_spd = 222
+    assert entity.ev_spa == entity.ev_spc == 222

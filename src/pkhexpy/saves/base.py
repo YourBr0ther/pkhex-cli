@@ -289,11 +289,12 @@ class SaveFile:
     def iter_extra(self) -> Iterator[tuple[ExtraSlot, Any]]:
         """Yield (slot, entity) for every occupied slot outside party and boxes."""
         for slot in self.extra_slots():
+            # Goes through get_extra_slot so a generation that reads its extra
+            # storage differently, as Gen1 and Gen2 do, is not bypassed here.
             try:
-                buffer, offset, size = self._extra_region(slot.kind, slot.index)
+                entity = self.get_extra_slot(slot.kind, slot.index)
             except (NotImplementedError, KeyError, IndexError):
                 continue
-            entity = self._read_extra(buffer, offset, size)
             if entity is not None:
                 yield slot, entity
 
