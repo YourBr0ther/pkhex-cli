@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from pkhexpy.pkm import io, serialize
-from pkhexpy.pkm.formats import ALL_FORMATS, PA8, PA9, PB7, PK1, PK2, PK9, SK2
+from pkhexpy.pkm.formats import ALL_FORMATS, PA8, PA9, PB7, PK1, PK2, PK8, PK9, SK2
 
 #: PKHeX names its files "<dex><shiny> - <nickname> - <hex>", so the filename is
 #: an independent check on what the parser reads out of the bytes.
@@ -347,3 +347,17 @@ def test_unknown_field_in_a_document_is_rejected() -> None:
     document["fields"]["Speceis"] = 999
     with pytest.raises(ValueError, match="Speceis"):
         serialize.from_dict(document)
+
+
+def test_equality_does_not_cross_formats() -> None:
+    """PK8, PK9 and PA9 are all 0x158 bytes, so buffer equality alone made a
+    zeroed one of each interchangeable."""
+    assert PK8() != PK9()
+    assert PK9() != PA9()
+    assert PK9() == PK9()
+    assert PK9() != "not an entity"
+
+
+def test_gameboy_equality_includes_state_outside_the_buffer() -> None:
+    """Gen1/2 keep the egg flag in the list slot marker, not the record."""
+    assert PK2(is_egg=True) != PK2(is_egg=False)

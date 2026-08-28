@@ -152,7 +152,25 @@ class LayoutBase:
         return len(self.data)
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, LayoutBase) and self.data == other.data
+        """Same format, same bytes, same out-of-buffer state.
+
+        Comparing buffers alone made PK8, PK9 and PA9 interchangeable, since
+        all three are 0x158 bytes; a zeroed one of each compared equal. That is
+        the confusion ``SaveFile._check_entity`` exists to stop on the write
+        path. Gen1/2 also keep the egg flag and the language outside the
+        record, so two identical buffers can still be different Pokemon.
+        """
+        if type(self) is not type(other):
+            return NotImplemented
+        return (self.data == other.data
+                and self.japanese == other.japanese
+                and getattr(self, "is_egg", None) == getattr(other, "is_egg", None))
+
+    #: Deliberately unhashable. Equality reads the buffer, and the buffer is
+    #: what every setter writes to, so a hash taken now would be stale after
+    #: the next assignment and the entity would be lost inside its own set.
+    #: Key on ``to_bytes()`` when you need one.
+    __hash__ = None
 
     def __repr__(self) -> str:
         return f"<{type(self).__name__} {len(self.data)} bytes>"
