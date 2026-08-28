@@ -18,19 +18,6 @@ from .io import from_bytes, to_bytes
 
 SCHEMA = "pkhexpy/entity/1"
 
-#: Fields whose value is an index into a named list.
-NAME_LOOKUPS = {
-    "Species": "species",
-    "Move1": "moves", "Move2": "moves", "Move3": "moves", "Move4": "moves",
-    "RelearnMove1": "moves", "RelearnMove2": "moves",
-    "RelearnMove3": "moves", "RelearnMove4": "moves",
-    "Ability": "abilities",
-    "Nature": "natures", "StatNature": "natures", "StatAlignment": "natures",
-    "Version": "games",
-    "Language": "languages",
-}
-
-
 def _encode(value: Any) -> Any:
     if isinstance(value, bytes | bytearray):
         return value.hex()

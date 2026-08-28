@@ -111,16 +111,6 @@ class SAV4(SaveFile):
         newest = compare_footers(bytes(self.data), footer, footer + PARTITION_SIZE)
         return (0 if newest == 0 else PARTITION_SIZE) + start
 
-    # --- block slices --------------------------------------------------------
-
-    @property
-    def general(self) -> memoryview:
-        return memoryview(self.data)[self.general_base:self.general_base + self.GENERAL_SIZE]
-
-    @property
-    def storage(self) -> memoryview:
-        return memoryview(self.data)[self.storage_base:self.storage_base + self.STORAGE_SIZE]
-
     # --- storage -------------------------------------------------------------
 
     def _box_offset(self, box: int) -> int:
