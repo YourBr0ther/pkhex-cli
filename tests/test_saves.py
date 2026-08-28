@@ -9,10 +9,10 @@ from pathlib import Path
 
 import pytest
 
-from pkhexpy import saves
+from pkhexpy import binio, saves
 from pkhexpy.binio import write_u16, write_u32
 from pkhexpy.pkm import io as entity_io
-from pkhexpy.saves import gen3, gen89, swish
+from pkhexpy.saves import base, gen3, gen89, swish
 from pkhexpy.saves.gen3 import FOOTER_COUNTER, FOOTER_ID, SIZE_MAIN, SIZE_SECTOR
 from pkhexpy.saves.swish import SCBlock, SCTypeCode
 
@@ -533,3 +533,46 @@ def test_unknown_extra_slot_is_rejected(real_saves: list[Path]) -> None:
     sav = _one_per_generation(real_saves)[0]
     with pytest.raises(KeyError):
         sav.get_extra_slot("nonsense", 0)
+
+
+#: Trainer fields that are stored bytes rather than derived, so a save which
+#: implements one must also be able to write it back.
+WRITABLE_TRAINER_FIELDS = ("trainer_name", "tid16", "sid16", "money", "play_time")
+
+
+def test_every_implemented_trainer_field_can_be_written(
+        real_saves: list[Path]) -> None:
+    """A getter without a setter is how an edit made through the JSON gets
+    accepted and then silently dropped, which is what happened before these
+    became descriptors.
+
+    Only fields the save class actually implements count. SaveFile supplies
+    defaults for the rest, so Gen1 reports a secret ID of 0 despite the games
+    having no such thing.
+    """
+    checked = 0
+    for sav in _one_per_generation(real_saves):
+        for name in WRITABLE_TRAINER_FIELDS:
+            owner = next((c for c in type(sav).__mro__ if name in c.__dict__), None)
+            if owner is None or owner is base.SaveFile:
+                continue
+            value = getattr(sav, name)
+            if value is None:
+                continue
+            setattr(sav, name, value)  # writing back what it reported must work
+            assert getattr(sav, name) == value, f"{type(sav).__name__}.{name}"
+            checked += 1
+    assert checked >= 30, f"only {checked} field writes were exercised"
+
+
+def test_width_generic_reads_and_writes_refuse_to_run_past_the_end() -> None:
+    """A short slice used to decode to a plausible smaller number rather than
+    failing, which is what the trainer descriptors read through."""
+    buffer = bytearray(8)
+    assert binio.read_int(buffer, 4, 4) == 0
+    binio.write_int(buffer, 4, 4, 1)
+    for offset in (5, -1, 99):
+        with pytest.raises(IndexError):
+            binio.read_int(buffer, offset, 4)
+        with pytest.raises(IndexError):
+            binio.write_int(buffer, offset, 4, 0)

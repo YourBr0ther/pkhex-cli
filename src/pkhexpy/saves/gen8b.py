@@ -11,8 +11,9 @@ from typing import ClassVar
 
 import hashlib
 
-from ..binio import read_u16, read_u32, write_u16, write_u32
+from ..binio import read_u16, read_u32, write_u16
 from ..pkm.formats import PB8
+from . import fields
 from .base import ExtraRegion, SaveFile
 
 #: The four shipped save sizes, one per game revision.
@@ -93,38 +94,21 @@ class SAV8BS(SaveFile):
 
     # --- trainer -------------------------------------------------------------
 
-    @property
-    def trainer_name(self) -> str:
-        return self.decode_string(bytes(self.data[self.STATUS_BASE:self.STATUS_BASE + 0x1A]))
+    REGIONS: ClassVar[dict[str, str]] = {
+        "status": "STATUS_BASE", "config": "CONFIG_BASE",
+        "playtime": "PLAY_TIME_BASE", "file": None,
+    }
 
-    @trainer_name.setter
-    def trainer_name(self, value: str) -> None:
-        start = self.STATUS_BASE
-        self.data[start:start + 0x1A] = self.encode_trainer_name(0x1A, value)
+    def region(self, name: str) -> tuple[bytearray, int]:
+        attr = self.REGIONS[name]
+        return self.data, getattr(self, attr) if attr else 0
 
-    @property
-    def tid16(self) -> int:
-        return read_u16(self.data, self.STATUS_BASE + 0x1C)
-
-    @tid16.setter
-    def tid16(self, value: int) -> None:
-        write_u16(self.data, self.STATUS_BASE + 0x1C, value)
-
-    @property
-    def sid16(self) -> int:
-        return read_u16(self.data, self.STATUS_BASE + 0x1E)
-
-    @sid16.setter
-    def sid16(self, value: int) -> None:
-        write_u16(self.data, self.STATUS_BASE + 0x1E, value)
-
-    @property
-    def money(self) -> int:
-        return read_u32(self.data, self.STATUS_BASE + 0x20)
-
-    @money.setter
-    def money(self, value: int) -> None:
-        write_u32(self.data, self.STATUS_BASE + 0x20, value)
+    trainer_name = fields.Text("status", 0x00, 0x1A)
+    tid16 = fields.U16("status", 0x1C)
+    sid16 = fields.U16("status", 0x1E)
+    money = fields.U32("status", 0x20)
+    language = fields.U32("config", 4)
+    version = fields.U32("file", 0)
 
     @property
     def trainer_gender(self) -> int:
@@ -134,10 +118,6 @@ class SAV8BS(SaveFile):
     @trainer_gender.setter
     def trainer_gender(self, value: int) -> None:
         self.data[self.STATUS_BASE + 0x24] = 1 if value == 0 else 0
-
-    @property
-    def language(self) -> int:
-        return read_u32(self.data, self.CONFIG_BASE + 4)
 
     @property
     def play_time(self) -> tuple[int, int, int]:
@@ -151,10 +131,6 @@ class SAV8BS(SaveFile):
         write_u16(self.data, base, hours)
         self.data[base + 2] = minutes
         self.data[base + 3] = seconds
-
-    @property
-    def version(self) -> int:
-        return read_u32(self.data, 0)
 
     # --- integrity -----------------------------------------------------------
 

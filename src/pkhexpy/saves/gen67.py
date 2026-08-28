@@ -16,6 +16,7 @@ from ..binio import read_u16, read_u32, write_u16, write_u32
 from ..data import DATA_DIR
 from ..pkm.formats import PB7, PK6, PK7
 from . import checksums
+from . import fields
 from .base import ExtraRegion, SaveFile
 
 #: Offset of the block-info table within the metadata chunk.
@@ -185,47 +186,19 @@ class SAV67(SaveFile):
     def _status_base(self) -> int:
         return self.block_offset(self.STATUS_BLOCK)
 
-    @property
-    def trainer_name(self) -> str:
-        start = self._status_base + self.STATUS_OT_OFFSET
-        return self.decode_string(bytes(self.data[start:start + 0x1A]))
+    def region(self, name: str) -> tuple[bytearray, int]:
+        if name == "status":
+            return self.data, self._status_base
+        if name == "playtime":
+            return self.data, self.block_offset(self.PLAYTIME_BLOCK)
+        raise KeyError(f"{self.GAME} has no {name!r} region")
 
-    @trainer_name.setter
-    def trainer_name(self, value: str) -> None:
-        start = self._status_base + self.STATUS_OT_OFFSET
-        self.data[start:start + 0x1A] = self.encode_trainer_name(0x1A, value)
-
-    @property
-    def tid16(self) -> int:
-        return read_u16(self.data, self._status_base)
-
-    @tid16.setter
-    def tid16(self, value: int) -> None:
-        write_u16(self.data, self._status_base, value)
-
-    @property
-    def sid16(self) -> int:
-        return read_u16(self.data, self._status_base + 2)
-
-    @sid16.setter
-    def sid16(self, value: int) -> None:
-        write_u16(self.data, self._status_base + 2, value)
-
-    @property
-    def version(self) -> int:
-        return self.data[self._status_base + 4]
-
-    @property
-    def trainer_gender(self) -> int:
-        return self.data[self._status_base + 5]
-
-    @trainer_gender.setter
-    def trainer_gender(self, value: int) -> None:
-        self.data[self._status_base + 5] = value
-
-    @property
-    def language(self) -> int:
-        return self.data[self._status_base + self.STATUS_LANGUAGE_OFFSET]
+    trainer_name = fields.Text("status", "STATUS_OT_OFFSET", 0x1A)
+    tid16 = fields.U16("status", 0x00)
+    sid16 = fields.U16("status", 0x02)
+    version = fields.U8("status", 0x04)
+    trainer_gender = fields.U8("status", 0x05)
+    language = fields.U8("status", "STATUS_LANGUAGE_OFFSET")
 
     @property
     def play_time(self) -> tuple[int, int, int]:
@@ -242,9 +215,11 @@ class SAV67(SaveFile):
 
     @property
     def money(self) -> int | None:
+        """Let's Go keeps no money block, so the field is absent rather than 0."""
         if self.MISC_BLOCK is None:
             return None
-        return read_u32(self.data, self.block_offset(self.MISC_BLOCK) + self.MISC_MONEY_OFFSET)
+        return read_u32(self.data,
+                        self.block_offset(self.MISC_BLOCK) + self.MISC_MONEY_OFFSET)
 
     @money.setter
     def money(self, value: int) -> None:

@@ -202,13 +202,13 @@ constructed save, so treat it as unverified.
 ## Development
 
 ```sh
-python3 -m pytest tests/ -q          # 54 tests on a bare clone
+python3 -m pytest tests/ -q          # 55 tests on a bare clone
 
 git clone --depth 1 https://github.com/kwsch/PKHeX.git reference_PKHeX
-python3 -m pytest tests/ -q          # 82, with the .pkX fixtures
+python3 -m pytest tests/ -q          # 83, with the .pkX fixtures
 
 sh tools/fetch_test_saves.sh         # ~40 MB of real saves
-python3 -m pytest tests/ -q          # 107, with the save corpus
+python3 -m pytest tests/ -q          # 113, with the save corpus
 ```
 
 `PKHEX_REFERENCE` and `PKHEXPY_SAVES` relocate those two directories.

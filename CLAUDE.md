@@ -35,6 +35,7 @@ src/pkhexpy/
     serialize.py      entity <-> JSON
   saves/
     base.py           shared save behaviour, slot iteration, JSON
+    fields.py         descriptors for the trainer record
     detect.py         which game a file came from
     gen12/3/45/67/89/8b.py   one module per era
     swish.py          SCBlock storage for the Switch games
@@ -117,6 +118,15 @@ appending, refuses a write that would leave a gap, and closes the gap on
 removal. Let's Go stores its party as pointers into the box list, so it raises
 rather than shifting entities the pointers still name.
 
+**A trainer field that can be read must be writable.** `apply_dict` used to
+drop the trainer block, and underneath it every trainer field was a getter with
+no setter, so an edit was accepted and then lost. They are descriptors now
+(`saves/fields.py`), declared once against a named region each save resolves to
+a buffer and a base, which makes a read-only stored field impossible to write by
+accident. What stays hand-written is what a descriptor would obscure: Gen3 money
+XOR-ed with the security key, the binary-coded decimal of Gen1 and Gen2, BDSP's
+inverted gender flag, and `play_time`, whose three units differ per generation.
+
 **A field the JSON exports must be a field the JSON can import.** `apply_dict`
 used to write party and boxes and drop the trainer block without a word, so an
 edit to money or trainer name vanished into a file that reported success.
@@ -136,13 +146,13 @@ None instead of a plausible wrong answer.
 ## Testing
 
 ```sh
-python3 -m pytest tests/ -q          # 54 on a bare clone; the rest skip
+python3 -m pytest tests/ -q          # 55 on a bare clone; the rest skip
 
 git clone --depth 1 https://github.com/kwsch/PKHeX.git reference_PKHeX
-python3 -m pytest tests/ -q          # 82, with the .pkX fixtures
+python3 -m pytest tests/ -q          # 83, with the .pkX fixtures
 
 sh tools/fetch_test_saves.sh         # ~40 MB of real saves from public repos
-python3 -m pytest tests/ -q          # 107, with the save corpus too
+python3 -m pytest tests/ -q          # 113, with the save corpus too
 ```
 
 `PKHEX_REFERENCE` moves the PKHeX checkout, `PKHEXPY_SAVES` moves the save

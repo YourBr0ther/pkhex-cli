@@ -140,6 +140,15 @@ class SaveFile:
     def party_count(self) -> int:
         raise NotImplementedError
 
+    def region(self, name: str) -> tuple[bytearray, int]:
+        """The buffer and base offset a named group of fields lives in.
+
+        Trainer fields sit at fixed offsets from a base that each generation
+        finds its own way: a save block, a checksummed chunk, or the start of
+        the file. Naming the region lets the fields be declared once.
+        """
+        raise KeyError(f"{self.GAME} has no {name!r} region")
+
     # --- trainer info; subclasses override what they store -------------------
 
     @property

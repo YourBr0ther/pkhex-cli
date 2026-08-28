@@ -12,6 +12,7 @@ from typing import ClassVar
 from ..binio import read_u16, read_u32, write_u16, write_u32
 from ..pkm.formats import PA8, PA9, PK8, PK9
 from . import swish
+from . import fields
 from .base import ExtraRegion, SaveFile
 from .swish import SCBlock
 
@@ -151,48 +152,17 @@ class SAV89(SaveFile):
 
     # --- trainer -------------------------------------------------------------
 
-    @property
-    def trainer_name(self) -> str:
-        data = self.status_data
-        start = self.STATUS_OT_OFFSET
-        return self.decode_string(bytes(data[start:start + 0x1A]))
+    def region(self, name: str) -> tuple[bytearray, int]:
+        if name == "status":
+            return self.status_data, 0
+        raise KeyError(f"{self.GAME} has no {name!r} region")
 
-    @trainer_name.setter
-    def trainer_name(self, value: str) -> None:
-        start = self.STATUS_OT_OFFSET
-        self.status_data[start:start + 0x1A] = self.encode_trainer_name(0x1A, value)
-
-    @property
-    def tid16(self) -> int:
-        return read_u16(self.status_data, self.STATUS_ID_OFFSET)
-
-    @tid16.setter
-    def tid16(self, value: int) -> None:
-        write_u16(self.status_data, self.STATUS_ID_OFFSET, value)
-
-    @property
-    def sid16(self) -> int:
-        return read_u16(self.status_data, self.STATUS_ID_OFFSET + 2)
-
-    @sid16.setter
-    def sid16(self, value: int) -> None:
-        write_u16(self.status_data, self.STATUS_ID_OFFSET + 2, value)
-
-    @property
-    def version(self) -> int:
-        return self.status_data[self.STATUS_GAME_OFFSET]
-
-    @property
-    def trainer_gender(self) -> int:
-        return self.status_data[self.STATUS_GENDER_OFFSET]
-
-    @trainer_gender.setter
-    def trainer_gender(self, value: int) -> None:
-        self.status_data[self.STATUS_GENDER_OFFSET] = value
-
-    @property
-    def language(self) -> int:
-        return self.status_data[self.STATUS_LANGUAGE_OFFSET]
+    trainer_name = fields.Text("status", "STATUS_OT_OFFSET", 0x1A)
+    tid16 = fields.U16("status", "STATUS_ID_OFFSET")
+    sid16 = fields.U16("status", "STATUS_ID_OFFSET", delta=2)
+    version = fields.U8("status", "STATUS_GAME_OFFSET")
+    trainer_gender = fields.U8("status", "STATUS_GENDER_OFFSET")
+    language = fields.U8("status", "STATUS_LANGUAGE_OFFSET")
 
     @property
     def play_time(self) -> tuple[int, int, int]:
@@ -224,6 +194,7 @@ class SAV89(SaveFile):
 
     @property
     def money(self) -> int | None:
+        """Money is a typed scalar block rather than bytes at an offset."""
         if self.KEY_MONEY is None:
             return None
         block = self.block(self.KEY_MONEY)

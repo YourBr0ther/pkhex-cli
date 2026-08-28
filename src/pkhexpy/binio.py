@@ -29,6 +29,27 @@ def _w(data: Buffer, offset: int, size: int, value: int, big: bool = False) -> N
     )
 
 
+def write_int(data: Buffer, offset: int, size: int, value: int,
+              big: bool = False) -> None:
+    """Write an unsigned value of an arbitrary width."""
+    _w(data, offset, size, value, big)
+
+
+def read_int(data: bytes, offset: int, size: int, big: bool = False) -> int:
+    """Read an unsigned value of an arbitrary width, refusing a short read.
+
+    Slicing past the end of a buffer yields fewer bytes and would decode to a
+    plausible smaller number rather than failing.
+    """
+    raw = data[offset:offset + size]
+    if offset < 0 or len(raw) != size:
+        raise IndexError(
+            f"read of {size} bytes at 0x{offset:X} runs past the end of a "
+            f"{len(data)}-byte buffer"
+        )
+    return int.from_bytes(raw, "big" if big else "little")
+
+
 def read_u8(data: bytes, offset: int) -> int:
     return data[offset]
 

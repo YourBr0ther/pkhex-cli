@@ -13,6 +13,7 @@ from .. import crypto
 from ..binio import read_i16, read_u16, read_u32, write_u16, write_u32
 from ..pkm.formats import PK3
 from . import checksums
+from . import fields
 from .base import ExtraRegion, SaveFile
 
 SIZE_SECTOR = 0x1000
@@ -199,37 +200,15 @@ class SAV3(SaveFile):
 
     # --- trainer -------------------------------------------------------------
 
-    @property
-    def trainer_name(self) -> str:
-        return self.decode_string(bytes(self.small[0:8]))
+    def region(self, name: str) -> tuple[bytearray, int]:
+        if name == "small":
+            return self.small, 0
+        raise KeyError(f"{self.GAME} has no {name!r} region")
 
-    @trainer_name.setter
-    def trainer_name(self, value: str) -> None:
-        self.small[0:8] = self.encode_trainer_name(8, value)
-
-    @property
-    def trainer_gender(self) -> int:
-        return self.small[8]
-
-    @trainer_gender.setter
-    def trainer_gender(self, value: int) -> None:
-        self.small[8] = value
-
-    @property
-    def tid16(self) -> int:
-        return read_u16(self.small, 0x0A)
-
-    @tid16.setter
-    def tid16(self, value: int) -> None:
-        write_u16(self.small, 0x0A, value)
-
-    @property
-    def sid16(self) -> int:
-        return read_u16(self.small, 0x0C)
-
-    @sid16.setter
-    def sid16(self, value: int) -> None:
-        write_u16(self.small, 0x0C, value)
+    trainer_name = fields.Text("small", 0x00, 8)
+    trainer_gender = fields.U8("small", 0x08)
+    tid16 = fields.U16("small", 0x0A)
+    sid16 = fields.U16("small", 0x0C)
 
     @property
     def play_time(self) -> tuple[int, int, int]:
@@ -250,6 +229,7 @@ class SAV3(SaveFile):
 
     @property
     def money(self) -> int:
+        """Emerald and FireRed obfuscate money by XOR with the security key."""
         return read_u32(self.large, self.MONEY_OFFSET) ^ self.security_key
 
     @money.setter
@@ -258,6 +238,7 @@ class SAV3(SaveFile):
 
     @property
     def language(self) -> int:
+        """Not stored: Gen3 tells the languages apart by the save's structure."""
         return 1 if self.is_japanese else 2
 
     # --- integrity -----------------------------------------------------------

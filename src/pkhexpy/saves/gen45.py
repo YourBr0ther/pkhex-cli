@@ -18,6 +18,7 @@ from ..binio import read_u16, read_u32, write_u16, write_u32
 from ..data import DATA_DIR
 from ..pkm.formats import PK4, PK5
 from . import checksums
+from . import fields
 from .base import ExtraRegion, SaveFile
 
 SIZE_G4RAW = 0x80000
@@ -134,73 +135,20 @@ class SAV4(SaveFile):
 
     # --- trainer -------------------------------------------------------------
 
-    #: Daycare, in the general block. Each slot is padded to party size, with
-    #: the experience earned while deposited in the last four bytes.
-    DAYCARE_OFFSET: int | None = None
-    DAYCARE_SLOT_SIZE = crypto.SIZE_4PARTY
-    #: HG/SS only: the Pokemon walking in a Pokewalker.
-    WALKER_OFFSET: int | None = None
-
-    def extra_regions(self) -> tuple[ExtraRegion, ...]:
-        regions: list[ExtraRegion] = []
-        if self.DAYCARE_OFFSET is not None:
-            regions.append(ExtraRegion("daycare", 2, self.DAYCARE_SLOT_SIZE,
-                                       self.DAYCARE_OFFSET))
-        if self.WALKER_OFFSET is not None:
-            regions.append(ExtraRegion("pokewalker", 1, 0, self.WALKER_OFFSET))
-        return tuple(regions)
-
-    def _extra_base(self, region: ExtraRegion) -> tuple[bytearray, int]:
-        return self.data, self.general_base
+    def region(self, name: str) -> tuple[bytearray, int]:
+        if name == "trainer":
+            return self.data, self.general_base + self.TRAINER_OFFSET
+        raise KeyError(f"{self.GAME} has no {name!r} region")
 
     def _general_u16(self, offset: int) -> int:
         return read_u16(self.data, self.general_base + offset)
 
-    @property
-    def trainer_name(self) -> str:
-        start = self.general_base + self.TRAINER_OFFSET
-        return self.decode_string(bytes(self.data[start:start + 16]))
-
-    @trainer_name.setter
-    def trainer_name(self, value: str) -> None:
-        start = self.general_base + self.TRAINER_OFFSET
-        self.data[start:start + 16] = self.encode_trainer_name(16, value)
-
-    @property
-    def tid16(self) -> int:
-        return self._general_u16(self.TRAINER_OFFSET + 0x10)
-
-    @tid16.setter
-    def tid16(self, value: int) -> None:
-        write_u16(self.data, self.general_base + self.TRAINER_OFFSET + 0x10, value)
-
-    @property
-    def sid16(self) -> int:
-        return self._general_u16(self.TRAINER_OFFSET + 0x12)
-
-    @sid16.setter
-    def sid16(self, value: int) -> None:
-        write_u16(self.data, self.general_base + self.TRAINER_OFFSET + 0x12, value)
-
-    @property
-    def money(self) -> int:
-        return read_u32(self.data, self.general_base + self.TRAINER_OFFSET + 0x14)
-
-    @money.setter
-    def money(self, value: int) -> None:
-        write_u32(self.data, self.general_base + self.TRAINER_OFFSET + 0x14, value)
-
-    @property
-    def trainer_gender(self) -> int:
-        return self.data[self.general_base + self.TRAINER_OFFSET + 0x18]
-
-    @trainer_gender.setter
-    def trainer_gender(self, value: int) -> None:
-        self.data[self.general_base + self.TRAINER_OFFSET + 0x18] = value
-
-    @property
-    def language(self) -> int:
-        return self.data[self.general_base + self.TRAINER_OFFSET + 0x19]
+    trainer_name = fields.Text("trainer", 0x00, 16)
+    tid16 = fields.U16("trainer", 0x10)
+    sid16 = fields.U16("trainer", 0x12)
+    money = fields.U32("trainer", 0x14)
+    trainer_gender = fields.U8("trainer", 0x18)
+    language = fields.U8("trainer", 0x19)
 
     @property
     def play_time(self) -> tuple[int, int, int]:
@@ -350,47 +298,17 @@ class SAV5(SaveFile):
     def _trainer_base(self) -> int:
         return self.blocks[self.TRAINER_BLOCK]["offset"]
 
-    @property
-    def trainer_name(self) -> str:
-        start = self._trainer_base + 4
-        return self.decode_string(bytes(self.data[start:start + 0x10]))
+    def region(self, name: str) -> tuple[bytearray, int]:
+        if name == "trainer":
+            return self.data, self._trainer_base
+        raise KeyError(f"{self.GAME} has no {name!r} region")
 
-    @trainer_name.setter
-    def trainer_name(self, value: str) -> None:
-        start = self._trainer_base + 4
-        self.data[start:start + 0x10] = self.encode_trainer_name(0x10, value)
-
-    @property
-    def tid16(self) -> int:
-        return read_u16(self.data, self._trainer_base + 0x14)
-
-    @tid16.setter
-    def tid16(self, value: int) -> None:
-        write_u16(self.data, self._trainer_base + 0x14, value)
-
-    @property
-    def sid16(self) -> int:
-        return read_u16(self.data, self._trainer_base + 0x16)
-
-    @sid16.setter
-    def sid16(self, value: int) -> None:
-        write_u16(self.data, self._trainer_base + 0x16, value)
-
-    @property
-    def language(self) -> int:
-        return self.data[self._trainer_base + 0x1E]
-
-    @property
-    def version(self) -> int:
-        return self.data[self._trainer_base + 0x1F]
-
-    @property
-    def trainer_gender(self) -> int:
-        return self.data[self._trainer_base + 0x21]
-
-    @trainer_gender.setter
-    def trainer_gender(self, value: int) -> None:
-        self.data[self._trainer_base + 0x21] = value
+    trainer_name = fields.Text("trainer", 0x04, 0x10)
+    tid16 = fields.U16("trainer", 0x14)
+    sid16 = fields.U16("trainer", 0x16)
+    language = fields.U8("trainer", 0x1E)
+    version = fields.U8("trainer", 0x1F)
+    trainer_gender = fields.U8("trainer", 0x21)
 
     @property
     def play_time(self) -> tuple[int, int, int]:
@@ -407,6 +325,7 @@ class SAV5(SaveFile):
 
     @property
     def money(self) -> int | None:
+        """Money lives in a different block from the rest of the trainer record."""
         if len(self.blocks) <= self.MISC_BLOCK:
             return None
         return read_u32(self.data, self.blocks[self.MISC_BLOCK]["offset"]
