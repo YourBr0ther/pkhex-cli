@@ -7,6 +7,7 @@ PKHeX recognizes is recognized here too.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from ..binio import read_u32
@@ -100,66 +101,104 @@ def _is_gen9_sv_size(length: int) -> bool:
     return any(low <= length <= high for low, high in SIZE_G9SV_RANGES)
 
 
-def detect(data: bytes, filename: str | None = None):
+def _gen9_sv(data: bytes):
+    """Scarlet/Violet grew with every patch, so the size is a range check."""
+    if not _is_gen9_sv_size(len(data)) or not swish.is_hash_valid(data):
+        return None
+    return SAV9SV, {}
+
+
+def _gen1(data: bytes):
+    if gen12.is_gen1_japanese(data):
+        return gen12.SAV1, {"japanese": True}
+    if gen12.is_gen1_international(data):
+        return gen12.SAV1, {}
+    return None
+
+
+def _gen2(data: bytes):
+    for check, kwargs in (
+        (gen12.is_gen2_gs_international, {}),
+        (gen12.is_gen2_crystal_international, {"crystal": True}),
+        (gen12.is_gen2_gs_japanese, {"japanese": True}),
+        (gen12.is_gen2_crystal_japanese, {"japanese": True, "crystal": True}),
+    ):
+        if check(data):
+            return gen12.SAV2, kwargs
+    return None
+
+
+def _gen3(data: bytes):
+    if not gen3.is_gen3(data):
+        return None
+    # Every Gen3 game shares a layout; the small block names the version.
+    probe = gen3.SAV3E(data)
+    return gen3.BY_VERSION[gen3.detect_version(bytes(probe.small))], {}
+
+
+def _gen4(data: bytes):
+    for cls in (SAV4DP, SAV4Pt, SAV4HGSS):
+        if _is_gen4(data, cls):
+            return cls, {}
+    return None
+
+
+def _gen5(data: bytes):
+    if _is_gen5(data, 0x24000, 0x8C):
+        return SAV5BW, {}
+    if _is_gen5(data, 0x26000, 0x94):
+        return SAV5B2W2, {}
+    return None
+
+
+def _beef(cls, limit: int | None = None):
+    """A 3DS save, told apart by the "BEEF" chunk near the end."""
+    def check(data: bytes):
+        return (cls, {}) if has_beef_footer(data[:limit] if limit else data) else None
+    return check
+
+
+def _hashed(cls):
+    """A Switch save, told apart by the SHA-256 over its payload."""
+    def check(data: bytes):
+        return (cls, {}) if swish.is_hash_valid(data) else None
+    return check
+
+
+def _bdsp(data: bytes):
+    return (gen8b.SAV8BS, {}) if gen8b.is_bdsp(data) else None
+
+
+#: Tried in order. ``sizes`` of None means the size does not narrow it down, so
+#: the check runs on any buffer that got this far.
+PROBES: tuple[tuple[tuple[int, ...] | None, Callable], ...] = (
+    ((gen12.SIZE_G1RAW,), _gen1),
+    ((gen12.SIZE_G2RAW_U, gen12.SIZE_G2RAW_J), _gen2),
+    (None, _gen3),
+    ((SIZE_G4RAW,), _gen4),
+    ((SIZE_G5RAW,), _gen5),
+    ((SIZE_G6XY,), _beef(SAV6XY)),
+    ((SIZE_G6ORAS,), _beef(SAV6AO)),
+    ((SIZE_G7SM,), _beef(SAV7SM)),
+    ((SIZE_G7USUM,), _beef(SAV7USUM)),
+    ((SIZE_G7GG,), _beef(SAV7b, 0xB8800)),
+    (SIZE_G8SWSH, _hashed(SAV8SWSH)),
+    (SIZE_G8LA, _hashed(SAV8LA)),
+    (None, _bdsp),
+    (None, _gen9_sv),
+    (SIZE_G9ZA, _hashed(SAV9ZA)),
+)
+
+
+def detect(data: bytes):
     """Return the save class and constructor keyword arguments for ``data``."""
     size = len(data)
-
-    # Game Boy: identified by the shape of their packed Pokemon lists.
-    if size == gen12.SIZE_G1RAW:
-        if gen12.is_gen1_japanese(data):
-            return gen12.SAV1, {"japanese": True}
-        if gen12.is_gen1_international(data):
-            return gen12.SAV1, {}
-    if size in (gen12.SIZE_G2RAW_U, gen12.SIZE_G2RAW_J):
-        if gen12.is_gen2_gs_international(data):
-            return gen12.SAV2, {}
-        if gen12.is_gen2_crystal_international(data):
-            return gen12.SAV2, {"crystal": True}
-        if gen12.is_gen2_gs_japanese(data):
-            return gen12.SAV2, {"japanese": True}
-        if gen12.is_gen2_crystal_japanese(data):
-            return gen12.SAV2, {"japanese": True, "crystal": True}
-
-    # Game Boy Advance: 14 sectors per copy, version told apart by the small block.
-    if gen3.is_gen3(data):
-        probe = gen3.SAV3E(data)
-        version = gen3.detect_version(bytes(probe.small))
-        return gen3.BY_VERSION[version], {}
-
-    # DS: block footers carry a size and an SDK magic.
-    if size == SIZE_G4RAW:
-        for cls in (SAV4DP, SAV4Pt, SAV4HGSS):
-            if _is_gen4(data, cls):
-                return cls, {}
-    if size == SIZE_G5RAW:
-        if _is_gen5(data, 0x24000, 0x8C):
-            return SAV5BW, {}
-        if _is_gen5(data, 0x26000, 0x94):
-            return SAV5B2W2, {}
-
-    # 3DS: a "BEEF" metadata chunk near the end.
-    if size == SIZE_G6XY and has_beef_footer(data):
-        return SAV6XY, {}
-    if size == SIZE_G6ORAS and has_beef_footer(data):
-        return SAV6AO, {}
-    if size == SIZE_G7SM and has_beef_footer(data):
-        return SAV7SM, {}
-    if size == SIZE_G7USUM and has_beef_footer(data):
-        return SAV7USUM, {}
-    if size == SIZE_G7GG and has_beef_footer(data[:0xB8800]):
-        return SAV7b, {}
-
-    # Switch: a trailing SHA-256 over the whole payload.
-    if size in SIZE_G8SWSH and swish.is_hash_valid(data):
-        return SAV8SWSH, {}
-    if size in SIZE_G8LA and swish.is_hash_valid(data):
-        return SAV8LA, {}
-    if gen8b.is_bdsp(data):
-        return gen8b.SAV8BS, {}
-    if _is_gen9_sv_size(size) and swish.is_hash_valid(data):
-        return SAV9SV, {}
-    if size in SIZE_G9ZA and swish.is_hash_valid(data):
-        return SAV9ZA, {}
+    for sizes, check in PROBES:
+        if sizes is not None and size not in sizes:
+            continue
+        found = check(data)
+        if found is not None:
+            return found
 
     known = KNOWN_SIZES.get(size)
     if known:
@@ -194,9 +233,9 @@ def _is_gen5(data: bytes, main_size: int, info_length: int) -> bool:
     return stored == checksums.crc16_ccitt(bytes(footer[:info_length]))
 
 
-def from_bytes(data: bytes, filename: str | None = None):
+def from_bytes(data: bytes):
     body, footer = split_rtc_footer(data)
-    cls, kwargs = detect(body, filename)
+    cls, kwargs = detect(body)
     sav = cls(body, **kwargs)
     if footer:
         # Keep it so writing the file back restores what the emulator expects.
@@ -206,4 +245,4 @@ def from_bytes(data: bytes, filename: str | None = None):
 
 def read_file(path: str | Path):
     path = Path(path)
-    return from_bytes(path.read_bytes(), filename=path.name)
+    return from_bytes(path.read_bytes())

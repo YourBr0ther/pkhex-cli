@@ -161,49 +161,68 @@ def from_dict(document: dict[str, Any], base=None):
     if cls is None:
         raise ValueError(f"unknown entity format {document.get('format')!r}")
 
-    japanese = bool(document.get("japanese", False))
-    raw = document.get("raw_base64")
-    if raw:
-        entity = from_bytes(base64.b64decode(raw), extension=name, japanese=japanese)
-    elif base is not None and isinstance(base, cls):
-        entity = base.clone()
-    else:
-        entity = cls(japanese=japanese)
-        if "is_egg" in document and hasattr(entity, "SLOT_EGG"):
-            object.__setattr__(entity, "is_egg", bool(document["is_egg"]))
-
-    by_pkhex = {f.pkhex_name: f for f in type(entity)._fields.values()}
-    names = {"Nickname": "nickname",
-             "OriginalTrainerName": "original_trainer_name",
-             "HandlingTrainerName": "handling_trainer_name"}
-
-    # Write only what the document actually changes. Fields overlap, and text
-    # fields are followed by "trash" - bytes left over from a previous name that
-    # the games keep and that PKHeX preserves. Re-encoding an unchanged value
-    # would clear them and alter a file that should have been untouched.
-    for key, value in (document.get("fields") or {}).items():
-        field = by_pkhex.get(key)
-        if field is not None:
-            if field.readonly:
-                continue
-            wanted = bytes.fromhex(value) if field.kind == "span" else value
-            try:
-                if _encode(field.decode(entity)) == value:
-                    continue
-            except Exception:
-                continue
-            field.encode(entity, wanted)
-            continue
-        attr = names.get(key)
-        if attr and hasattr(type(entity), attr):
-            try:
-                if getattr(entity, attr) == value:
-                    continue
-            except Exception:
-                pass
-            setattr(entity, attr, value)
-
+    entity = _starting_entity(document, base, cls, name)
+    _apply_fields(entity, document.get("fields") or {})
     if "is_egg" in document and hasattr(entity, "SLOT_EGG"):
         object.__setattr__(entity, "is_egg", bool(document["is_egg"]))
     entity.refresh_checksum()
     return entity
+
+
+def _starting_entity(document: dict[str, Any], base, cls, name: str):
+    """What to apply the document's fields on top of.
+
+    The original bytes are best, the slot being overwritten is next, and a
+    zeroed record is the last resort; only that one loses the bytes no field
+    covers.
+    """
+    japanese = bool(document.get("japanese", False))
+    raw = document.get("raw_base64")
+    if raw:
+        return from_bytes(base64.b64decode(raw), extension=name, japanese=japanese)
+    if base is not None and isinstance(base, cls):
+        return base.clone()
+    return cls(japanese=japanese)
+
+
+#: Text fields the layout does not own, exposed as ordinary attributes.
+TEXT_ATTRIBUTES = {
+    "Nickname": "nickname",
+    "OriginalTrainerName": "original_trainer_name",
+    "HandlingTrainerName": "handling_trainer_name",
+}
+
+
+def _apply_fields(entity, fields: dict[str, Any]) -> None:
+    """Write only what the document actually changes.
+
+    Fields overlap, and text fields are followed by "trash": bytes left over
+    from a previous name that the games keep and that PKHeX preserves.
+    Re-encoding an unchanged value would clear them and alter a file that
+    should have been untouched.
+    """
+    by_pkhex = {f.pkhex_name: f for f in type(entity)._fields.values()}
+    for key, value in fields.items():
+        field = by_pkhex.get(key)
+        if field is not None:
+            if field.readonly:
+                continue
+            # A field that cannot be read back cannot be compared, so leave it
+            # rather than guessing that the document differs.
+            try:
+                unchanged = _encode(field.decode(entity)) == value
+            except (AttributeError, ValueError, IndexError, KeyError):
+                continue
+            if unchanged:
+                continue
+            field.encode(entity,
+                         bytes.fromhex(value) if field.kind == "span" else value)
+            continue
+        attr = TEXT_ATTRIBUTES.get(key)
+        if attr and hasattr(type(entity), attr):
+            try:
+                if getattr(entity, attr) == value:
+                    continue
+            except (AttributeError, ValueError, IndexError, KeyError):
+                pass
+            setattr(entity, attr, value)

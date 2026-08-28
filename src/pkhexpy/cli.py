@@ -30,7 +30,7 @@ def _load(path):
     raw = Path(path).read_bytes()
     save_error = None
     try:
-        return "save", save_io.from_bytes(raw, filename=Path(path).name)
+        return "save", save_io.from_bytes(raw)
     except save_io.SaveFormatError as exc:
         save_error = exc
     try:
