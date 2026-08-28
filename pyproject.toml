@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pkhexpy"
+version = "0.1.0"
+description = "Pokemon save and entity files to JSON and back"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "AGPL-3.0-or-later" }
+dependencies = []
+
+[project.scripts]
+pkhexpy = "pkhexpy.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pkhexpy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
