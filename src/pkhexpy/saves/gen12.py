@@ -13,6 +13,7 @@ from ..binio import read_u16, read_u16_be, write_u16, write_u16_be
 from ..pkm.formats import (
     PK1, PK2, STRING_LENGTH_INTERNATIONAL, STRING_LENGTH_JAPANESE,
 )
+from ..strings.gen12 import inflate_ligatures
 from .base import ExtraRegion, SaveFile
 
 SIZE_G1RAW = 0x8000
@@ -469,19 +470,19 @@ class SAV2(SAVGB):
         ("gs", False): dict(money=0x23DB, current_box_index=0x2724, party=0x288A,
                             current_box=0x2D6C, play_time=0x2053, gender=None,
                             checksum_end=0x2D68, checksum1=0x2D69, checksum2=0x7E6D,
-                            daycare=0x2A6C + 0x3C),
+                            daycare=0x2A6C + 0x3C, box_names=0x2727),
         ("c", False): dict(money=0x23DC, current_box_index=0x2700, party=0x2865,
                            current_box=0x2D10, play_time=0x2052, gender=0x3E3D,
                            checksum_end=0x2B82, checksum1=0x2D0D, checksum2=0x1F0D,
-                           daycare=0x2A47 + 0x3C),
+                           daycare=0x2A47 + 0x3C, box_names=0x2703),
         ("gs", True): dict(money=0x23BC, current_box_index=0x2705, party=0x283E,
                            current_box=0x2D10, play_time=0x2034, gender=None,
                            checksum_end=0x2C8B, checksum1=0x2D0D, checksum2=0x7F0D,
-                           daycare=0x29EE + 0x3C),
+                           daycare=0x29EE + 0x3C, box_names=0x2708),
         ("c", True): dict(money=0x23BE, current_box_index=0x26E2, party=0x281A,
                           current_box=0x2D10, play_time=0x2034, gender=0x8000,
                           checksum_end=0x2AE2, checksum1=0x2D0D, checksum2=0x7F0D,
-                          daycare=0x29CA + 0x3C),
+                          daycare=0x29CA + 0x3C, box_names=0x26E5),
     }
 
     #: Two parents and the egg they produced.
@@ -582,6 +583,24 @@ class SAV2(SAVGB):
     @property
     def current_box(self) -> int:
         return self.data[self.offsets["current_box_index"]] & 0x7F
+
+    #: Eight characters plus a terminator. Korean Gold/Silver uses seventeen,
+    #: which this port does not read.
+    BOX_NAME_LENGTH = 9
+
+    def box_name(self, box: int) -> str | None:
+        """Gen2 lets the player rename a box.
+
+        The stored text can hold ligature glyphs, single bytes standing for an
+        apostrophe and a letter, which the games render as two characters. Box
+        names and mail are the only places they appear, so the expansion lives
+        here rather than in the shared decoder.
+        """
+        self._check_index("box", box, self.BOX_COUNT)
+        start = self.offsets["box_names"] + box * self.BOX_NAME_LENGTH
+        raw = bytes(self.data[start:start + self.BOX_NAME_LENGTH])
+        name = inflate_ligatures(self.decode_string(raw), self.language)
+        return name or None
 
     def _checksum(self) -> int:
         total = 0

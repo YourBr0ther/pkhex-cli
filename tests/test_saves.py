@@ -765,3 +765,70 @@ def test_removing_a_party_member_works_the_same_two_ways(
         assert bytes(removed.data) == bytes(cleared.data), path.name
         checked += 1
     assert checked, "no Gen1/2 save in the corpus had a party to shorten"
+
+
+def test_box_names_are_read_for_every_generation_that_stores_them(
+        real_saves: list[Path]) -> None:
+    """Gen2 through Gen5 returned None for every box.
+
+    Gen1 has no box names in the game, Let's Go keeps one storage rather than
+    boxes, and Scarlet/Violet leaves the block zeroed until the player renames
+    something, so those three are allowed to have none.
+    """
+    NO_NAMES = {"rby", "gg", "sv", "za"}
+    seen: dict[str, bool] = {}
+    for path in real_saves:
+        try:
+            sav = saves.from_bytes(path.read_bytes())
+        except saves.SaveFormatError:
+            continue
+        named = any(sav.box_name(box) for box in range(sav.BOX_COUNT))
+        seen[sav.KEY] = seen.get(sav.KEY, False) or named
+
+    for key, named in sorted(seen.items()):
+        if key in NO_NAMES:
+            continue
+        assert named, f"{key} reads no box names"
+    assert seen.keys() - NO_NAMES, "no save in the corpus had named boxes"
+
+
+def test_a_renamed_box_reads_back_as_the_player_typed_it(
+        real_saves: list[Path]) -> None:
+    """Default names prove only that the offset lands on text. A box the player
+    renamed is what proves it is the right text."""
+    wanted = {
+        "e": "ボックス１",          # a Japanese Emerald, so the glyph table too
+        "frlg": "EGG RSE",
+        "dp": "1st pkmn",
+        "pt": "Uber1",
+        "b2w2": "Shinies",
+        "gsc": "Evolvers",
+    }
+    found: set[str] = set()
+    for path in real_saves:
+        try:
+            sav = saves.from_bytes(path.read_bytes())
+        except saves.SaveFormatError:
+            continue
+        expected = wanted.get(sav.KEY)
+        # A save with unnamed boxes yields None, which would match a key this
+        # table does not list.
+        if expected and expected in {sav.box_name(b) for b in range(sav.BOX_COUNT)}:
+            found.add(sav.KEY)
+    assert found == set(wanted), f"missing {sorted(set(wanted) - found)}"
+
+
+def test_box_names_do_not_change_the_bytes(real_saves: list[Path]) -> None:
+    """Reading a name must not disturb a save that is only being read."""
+    checked = 0
+    for path in real_saves:
+        raw = path.read_bytes()
+        try:
+            sav = saves.from_bytes(raw)
+        except saves.SaveFormatError:
+            continue
+        for box in range(sav.BOX_COUNT):
+            sav.box_name(box)
+        assert sav.to_bytes() == raw, path.name
+        checked += 1
+    assert checked > 50
