@@ -19,6 +19,9 @@ Notable changes per release. Dates are UTC.
   and nature, and both it and the stored block appear in the JSON.
 - Base stats follow the form, so Giratina's two forms no longer share a row.
 - `py.typed`, so the annotations reach anything importing the package.
+- Box names are read for generations 2 through 5, which previously exported a
+  null name for every box. Gen2 needed ligature expansion, where one stored
+  byte stands for an apostrophe and a letter.
 
 ### Fixed
 
@@ -45,6 +48,9 @@ Notable changes per release. Dates are UTC.
   said otherwise. `set_party_slot(slot, None)` had always worked.
 - Two entities are equal only if they are the same format. PK8, PK9 and PA9 are
   all 0x158 bytes, so a zeroed one of each compared equal.
+- `--into` is refused on an entity document rather than parsed and dropped. It
+  did not even have to name a save file, and the run reported success while
+  the save went untouched.
 - Out-of-range slot indices are rejected. `set_party_slot(99, pk)` used to
   compute an offset anyway and write over unrelated save data.
 - A slot only accepts an entity of its own format. PK4 and PK5 share a stored
