@@ -47,9 +47,9 @@ def get_dict_g1(jp: bool) -> tuple[str, ...]:
 def get_dict_g2(language: int) -> tuple[str, ...]:
     if language == 1:            # Japanese
         return tables.G2_JP
-    if language in (3, 5):       # French, Spanish
+    if language in (3, 5):       # French, and German, which shares the table
         return tables.G2_FRE
-    if language in (4, 7):       # Italian, and the shared Spanish table
+    if language in (4, 7):       # Italian, and Spanish, which shares the table
         return tables.G2_ITA
     return tables.G2_EN
 
@@ -206,6 +206,45 @@ def _set(
         return count
     buffer[count] = TERMINATOR_CODE
     return count + 1
+
+
+# --- ligatures --------------------------------------------------------------
+
+#: Single glyphs standing for an apostrophe plus a letter. The games spend one
+#: byte on each; PKHeX expands them on the way out and folds them back on the
+#: way in. Only box names and mail use them, which is why the entity name path
+#: leaves them alone.
+LIGATURE_CODES = "０１２３４５６７８９ＡＢ"
+#: The letter each code carries, per language group. English puts the
+#: apostrophe first ('d); French and German put it last (c'), except index 8.
+LIGATURE_ENG = "dlmrstv"
+LIGATURE_FRE = "cdjlmnpsstuy"
+#: The one French entry that reads 's rather than s'.
+LIGATURE_FRE_APOSTROPHE_FIRST = 8
+APOSTROPHE = "’"
+
+LANGUAGES_WITHOUT_LIGATURES = (1, 8)     # Japanese, Korean
+LANGUAGES_APOSTROPHE_LAST = (3, 5)       # French, German
+
+
+def inflate_ligatures(text: str, language: int) -> str:
+    """Expand each ligature glyph into the two characters it stands for."""
+    if language in LANGUAGES_WITHOUT_LIGATURES:
+        return text
+    last = language in LANGUAGES_APOSTROPHE_LAST
+    letters = LIGATURE_FRE if last else LIGATURE_ENG
+    out: list[str] = []
+    for char in text:
+        index = LIGATURE_CODES.find(char)
+        if index == -1 or index >= len(letters):
+            out.append(char)
+            continue
+        letter = letters[index]
+        if last and index != LIGATURE_FRE_APOSTROPHE_FIRST:
+            out.append(letter + APOSTROPHE)
+        else:
+            out.append(APOSTROPHE + letter)
+    return "".join(out)
 
 
 def get_string1(data: bytes, jp: bool) -> str:
