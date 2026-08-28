@@ -22,6 +22,29 @@ Notable changes per release. Dates are UTC.
 
 ### Fixed
 
+- Stadium 2 files are readable. `SK2` had the fields but none of the Game Boy
+  record behaviour, so `ivs`, `evs` and `is_shiny` raised and both `show` and
+  `to-json` died on any `.sk2`. It was also left on the Gen3-onward stat
+  formula with a 252 EV cap, which would have returned six wrong numbers for a
+  record holding Gen2 stat experience.
+- The Gen4 daycare and the Pokéwalker are read. The offsets were declared in
+  the save classes and never used, which made Gen4 the one generation reading
+  nothing outside its party and boxes.
+- A Legends Z-A record holding a Mega Stone or a Primal Orb is detected as one.
+  The detector's last two branches both returned `PK9`, so the test between
+  them was computed and discarded.
+- A field name the JSON does not recognize is rejected rather than dropped. An
+  edit to a misspelled field used to be accepted, and then lost.
+- Exporting an entity no longer hides a decoder error as a missing field.
+  `to_dict` caught every exception per field; it now asks whether the field is
+  in the buffer, which is the question it meant to ask.
+- `read_u16` and its siblings refuse a read that runs past the end of a buffer,
+  the way `read_int` and every write already did. A short read decoded to a
+  plausible smaller number and a negative offset decoded to zero.
+- `remove_party_slot` works on Gen1 and Gen2, which resize their party fine and
+  said otherwise. `set_party_slot(slot, None)` had always worked.
+- Two entities are equal only if they are the same format. PK8, PK9 and PA9 are
+  all 0x158 bytes, so a zeroed one of each compared equal.
 - Out-of-range slot indices are rejected. `set_party_slot(99, pk)` used to
   compute an offset anyway and write over unrelated save data.
 - A slot only accepts an entity of its own format. PK4 and PK5 share a stored
