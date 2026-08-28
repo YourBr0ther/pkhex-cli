@@ -135,7 +135,7 @@ def test_editing_touches_only_the_edited_slot(parsed) -> None:
         assert edited.checksums_valid, path.name
         assert edited.get_box_slot(box, slot).nickname == name, path.name
 
-        changed = sum(1 for a, b in zip(raw, edited.to_bytes()) if a != b)
+        changed = sum(1 for a, b in zip(raw, edited.to_bytes(), strict=False) if a != b)
         # Gen4/5 re-encrypt the whole record when its checksum changes, so allow
         # a slot's worth of movement; anything larger means unrelated damage.
         assert 0 < changed <= sav.SIZE_BOXSLOT + 64, f"{path.name} changed {changed}"

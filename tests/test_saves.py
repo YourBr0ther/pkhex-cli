@@ -59,7 +59,7 @@ def test_editing_a_save_touches_only_that_slot(save_file: Path) -> None:
     assert edited.get_box_slot(0, 0).nickname == "Renamed"
 
     out = edited.to_bytes()
-    changed = sum(1 for a, b in zip(raw, out) if a != b)
+    changed = sum(1 for a, b in zip(raw, out, strict=False) if a != b)
     assert 0 < changed < 64, "an edit should not rewrite the whole file"
 
 
@@ -183,8 +183,9 @@ def _build_switch_save(blocks, target_size: int | None = None) -> bytes:
     """Pack SCBlocks, optionally padding to a real save size for detection."""
     if target_size is not None:
         used = sum(b.serialized_length() for b in blocks) + swish.SIZE_HASH
-        blocks = list(blocks) + [
-            SCBlock(0xDEADBEEF, SCTypeCode.OBJECT, bytearray(target_size - used - 9))
+        blocks = [
+            *blocks,
+            SCBlock(0xDEADBEEF, SCTypeCode.OBJECT, bytearray(target_size - used - 9)),
         ]
     return swish.encrypt(blocks)
 

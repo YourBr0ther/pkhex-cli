@@ -32,7 +32,7 @@ NAME_LOOKUPS = {
 
 
 def _encode(value: Any) -> Any:
-    if isinstance(value, (bytes, bytearray)):
+    if isinstance(value, bytes | bytearray):
         return value.hex()
     if isinstance(value, bool):
         return value

@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # Weekly, to catch a corpus source going away or changing shape.
+    - cron: "37 6 * * 1"
+
+jobs:
+  test:
+    name: Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install
+        run: pip install -e . pytest
+
+      # The .pkX fixtures live in the PKHeX repository rather than here. They
+      # are what checks species, form, checksum and encryption constant against
+      # the values PKHeX encodes in each filename.
+      - name: Fetch PKHeX fixtures
+        run: git clone --depth 1 --filter=blob:none https://github.com/kwsch/PKHeX.git reference_PKHeX
+
+      - name: Test
+        run: python -m pytest tests/ -q
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff
+      - run: ruff check src tools tests
+
+  # The real-save corpus is ~40 MB pulled from four third-party repositories.
+  # Fetching it on every push would be slow and unkind to them, so it runs on a
+  # schedule and on demand instead.
+  corpus:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e . pytest
+      - run: git clone --depth 1 --filter=blob:none https://github.com/kwsch/PKHeX.git reference_PKHeX
+      - run: sh tools/fetch_test_saves.sh
+      - run: python -m pytest tests/ -q

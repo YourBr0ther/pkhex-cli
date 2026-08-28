@@ -7,7 +7,7 @@ loaded lazily, so importing the library does not pull ~2 MB of JSON into memory.
 from __future__ import annotations
 
 import json
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 
 DATA_DIR = Path(__file__).parent
@@ -25,7 +25,7 @@ def language_code(language_id: int) -> str:
     return LANGUAGE_CODES.get(language_id, DEFAULT_LANGUAGE)
 
 
-@lru_cache(maxsize=None)
+@cache
 def names(language: str = DEFAULT_LANGUAGE) -> dict[str, list[str]]:
     """All name lists for one language, keyed by list name."""
     path = DATA_DIR / "names" / f"{language}.json"
@@ -59,7 +59,7 @@ def item_name(index: int, generation: int, language: str = DEFAULT_LANGUAGE) -> 
     return lookup("items", index, language)
 
 
-@lru_cache(maxsize=None)
+@cache
 def locations(context: str) -> dict[str, dict[str, list[str]]]:
     """Met-location lists for one entity context, e.g. ``"gen9"``."""
     path = DATA_DIR / "locations" / f"{context}.json"
@@ -93,13 +93,13 @@ def location_name(
     return None
 
 
-@lru_cache(maxsize=None)
+@cache
 def experience_tables() -> list[list[int]]:
     """Six growth-rate tables; ``table[growth][level - 1]`` is the EXP needed."""
     return json.loads((DATA_DIR / "experience.json").read_text())
 
 
-@lru_cache(maxsize=None)
+@cache
 def personal() -> dict[str, dict[str, list[int]]]:
     """Growth rate and gender ratio per species, per game table."""
     return json.loads((DATA_DIR / "personal.json").read_text())

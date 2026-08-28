@@ -7,6 +7,8 @@ means unpacking that list; writing means packing it back.
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from ..binio import read_u16, read_u16_be, write_u16
 from ..pkm.formats import (
     PK1, PK2, STRING_LENGTH_INTERNATIONAL, STRING_LENGTH_JAPANESE,
@@ -259,12 +261,16 @@ class SAV1(SAVGB):
     BOX_COUNT = 12
 
     #: Offsets that differ between the Japanese and international releases.
-    OFFSETS_INT = {"money": 0x25F3, "tid": 0x2605, "current_box_index": 0x284C,
-                   "play_time": 0x2CED, "party": 0x2F2C, "current_box": 0x30C0,
-                   "checksum": 0x3523}
-    OFFSETS_JPN = {"money": 0x25EE, "tid": 0x25FB, "current_box_index": 0x2842,
-                   "play_time": 0x2CA0, "party": 0x2ED5, "current_box": 0x302D,
-                   "checksum": 0x3594}
+    OFFSETS_INT: ClassVar[dict[str, int]] = {
+        "money": 0x25F3, "tid": 0x2605, "current_box_index": 0x284C,
+        "play_time": 0x2CED, "party": 0x2F2C, "current_box": 0x30C0,
+        "checksum": 0x3523,
+    }
+    OFFSETS_JPN: ClassVar[dict[str, int]] = {
+        "money": 0x25EE, "tid": 0x25FB, "current_box_index": 0x2842,
+        "play_time": 0x2CA0, "party": 0x2ED5, "current_box": 0x302D,
+        "checksum": 0x3594,
+    }
 
     def __init__(self, data: bytes | bytearray, *, japanese: bool = False) -> None:
         super().__init__(data, japanese=japanese)
@@ -319,7 +325,7 @@ class SAV2(SAVGB):
     BOX_COUNT = 14
 
     #: (money, current box index, party, current box, checksum end, checksum 1, checksum 2)
-    VARIANTS = {
+    VARIANTS: ClassVar[dict[tuple[str, bool], dict]] = {
         ("gs", False): dict(money=0x23DB, current_box_index=0x2724, party=0x288A,
                             current_box=0x2D6C, play_time=0x2053, gender=None,
                             checksum_end=0x2D68, checksum1=0x2D69, checksum2=0x7E6D),

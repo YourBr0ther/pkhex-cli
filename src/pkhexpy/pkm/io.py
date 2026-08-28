@@ -192,7 +192,7 @@ def to_bytes(entity, *, encrypted: bool = False) -> bytes:
     PKHeX writes .pkX files decrypted, so that is the default here too; pass
     ``encrypted=True`` for the form a save file stores.
     """
-    if isinstance(entity, (PK1, PK2)):
+    if isinstance(entity, PK1 | PK2):
         return _add_list_header(entity, entity.japanese)
     if not encrypted:
         entity.refresh_checksum()

@@ -253,7 +253,8 @@ class SAV3(SaveFile):
             sector = bytes(self.data[offset:offset + SIZE_SECTOR])
             if self._sector_uninitialized(sector):
                 continue
-            if checksums.checksum32(sector[:SIZE_SECTOR_USED]) != read_u16(self.data, offset + FOOTER_ID):
+            stored = read_u16(self.data, offset + FOOTER_ID)
+            if checksums.checksum32(sector[:SIZE_SECTOR_USED]) != stored:
                 return False
         return True
 

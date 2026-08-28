@@ -7,8 +7,10 @@ byte components. Formats override the class constants that these depend on.
 
 from __future__ import annotations
 
+import contextlib
 import datetime as _dt
-from typing import Any, Callable, Iterable
+from typing import Any
+from collections.abc import Callable, Iterable
 
 from .. import data
 from .layout import LayoutBase
@@ -269,10 +271,9 @@ class Entity(LayoutBase):
             return True
 
     def refresh_checksum(self) -> None:
-        try:
+        # Formats without a stored checksum have nothing to refresh.
+        with contextlib.suppress(NotImplementedError, AttributeError):
             self.checksum = self.calculate_checksum()
-        except (NotImplementedError, AttributeError):
-            pass
 
     # --- encryption ---------------------------------------------------------
 

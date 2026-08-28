@@ -80,12 +80,12 @@ def audit(entities) -> tuple[dict, dict]:
                 value = field.decode(entity)
             except Exception:
                 continue
-            if isinstance(value, (bytes, bytearray)):
+            if isinstance(value, bytes | bytearray):
                 value = value.hex()
             key = (cls, name)
             stats[key][value] += 1
 
-            if isinstance(value, bool) or not isinstance(value, (int, float)):
+            if isinstance(value, bool) or not isinstance(value, int | float):
                 continue
             limit = limit_for(entity, name)
             if limit is not None and not 0 <= value <= limit:

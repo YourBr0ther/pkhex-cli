@@ -5,11 +5,31 @@ build-backend = "hatchling.build"
 [project]
 name = "pkhexpy"
 version = "0.1.0"
-description = "Pokemon save and entity files to JSON and back"
+description = "Pokemon save files and individual Pokemon as JSON, and back"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "AGPL-3.0-or-later" }
+keywords = ["pokemon", "pkhex", "save-editor", "json", "file-format"]
 dependencies = []
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Games/Entertainment",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Utilities",
+]
+
+[project.urls]
+Homepage = "https://github.com/YourBr0ther/pkhex-cli"
+Repository = "https://github.com/YourBr0ther/pkhex-cli"
+Issues = "https://github.com/YourBr0ther/pkhex-cli/issues"
 
 [project.scripts]
 pkhexpy = "pkhexpy.cli:main"
@@ -19,3 +39,24 @@ packages = ["src/pkhexpy"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "SIM", "RUF", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# The glyph tables are the game's own characters, so "ambiguous" fullwidth
+# forms are the data rather than a typo.
+"src/pkhexpy/strings/tables.py" = ["RUF001", "E501"]
+"src/pkhexpy/pkm/_layouts.py" = ["E501"]
+# Tests deliberately use fullwidth text to exercise the Japanese encodings.
+"tests/test_real_saves.py" = ["RUF001"]
+"tests/test_entities.py" = ["RUF001"]
+# The typographic apostrophe is a character these tables actually remap.
+"src/pkhexpy/strings/gen345.py" = ["RUF001"]
+# Dense by nature: SVG path data and C# matching patterns read worse wrapped.
+"tools/make_artwork.py" = ["E501"]
+"tools/extract_fields.py" = ["E501"]

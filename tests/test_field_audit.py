@@ -8,6 +8,7 @@ that same wrong offset. These tests look at the values themselves.
 from __future__ import annotations
 
 import collections
+import contextlib
 from pathlib import Path
 
 import pytest
@@ -120,10 +121,9 @@ def test_core_fields_are_not_stuck_at_one_value(population) -> None:
         for entity in entities:
             for field in type(entity)._fields.values():
                 if field.pkhex_name in MUST_VARY:
-                    try:
+                    # A field outside a stored-size record simply has no value.
+                    with contextlib.suppress(Exception):
                         seen[field.pkhex_name].add(field.decode(entity))
-                    except Exception:
-                        pass
         for name, values in seen.items():
             if len(values) == 1 and (cls, name) not in EXPECTED_CONSTANT:
                 problems.append(f"{cls}.{name} is always {values.pop()!r} "

@@ -8,7 +8,8 @@ above that - slot iteration, JSON, write-back - lives here.
 from __future__ import annotations
 
 import base64
-from typing import Any, Iterator
+from typing import Any
+from collections.abc import Iterator
 
 from ..pkm import serialize as entity_json
 from ..binio import read_u16, read_u32

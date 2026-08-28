@@ -310,7 +310,7 @@ class SAV5(SaveFile):
 
     @property
     def money(self) -> int | None:
-        if self.MISC_BLOCK >= len(self.blocks):
+        if len(self.blocks) <= self.MISC_BLOCK:
             return None
         return read_u32(self.data, self.blocks[self.MISC_BLOCK]["offset"]
                         + self.MISC_MONEY_OFFSET)

@@ -7,7 +7,8 @@ classes in ``formats.py`` subclass those and add derived behavior.
 
 from __future__ import annotations
 
-from typing import Any, Iterator
+from typing import Any
+from collections.abc import Iterator
 
 from ..strings import StringConverterOption, get_string, set_string
 
