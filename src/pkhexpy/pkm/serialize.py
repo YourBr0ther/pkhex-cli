@@ -108,10 +108,14 @@ def to_dict(entity, *, include_raw: bool = True,
 
     values: dict[str, Any] = {}
     for _, field in ordered:
-        try:
-            values[field.pkhex_name] = _encode(field.decode(entity))
-        except Exception:      # a field whose bytes fall outside a stored-size buffer
+        # A stored-size record stops before the party stat block, so some of
+        # the class's fields are not in this buffer. Asking is the check;
+        # decode() is called directly here and so skips Field.__get__, which
+        # is where the bounds check normally lives. Catching instead would
+        # also swallow a decoder bug and silently shorten the document.
+        if not field.fits(entity):
             continue
+        values[field.pkhex_name] = _encode(field.decode(entity))
 
     # Names live outside the field table, so add them explicitly.
     for key, attr in (("Nickname", "nickname"),
@@ -119,7 +123,7 @@ def to_dict(entity, *, include_raw: bool = True,
                       ("HandlingTrainerName", "handling_trainer_name")):
         try:
             text = getattr(entity, attr)
-        except Exception:
+        except AttributeError:      # a format without this name at all
             continue
         if text or key != "HandlingTrainerName":
             values[key] = text
@@ -200,29 +204,40 @@ def _apply_fields(entity, fields: dict[str, Any]) -> None:
     from a previous name that the games keep and that PKHeX preserves.
     Re-encoding an unchanged value would clear them and alter a file that
     should have been untouched.
+
+    A key this format does not have is rejected rather than skipped. Dropping
+    it silently is how an edit gets accepted and then lost, which is the same
+    failure ``LayoutBase.__setattr__`` and ``SaveFile.apply_trainer`` refuse.
     """
     by_pkhex = {f.pkhex_name: f for f in type(entity)._fields.values()}
     for key, value in fields.items():
         field = by_pkhex.get(key)
         if field is not None:
             if field.readonly:
+                # Derived, and exported so the document reads well. There is
+                # nothing to write back, and saying so would break every round
+                # trip of a document this code produced.
                 continue
-            # A field that cannot be read back cannot be compared, so leave it
-            # rather than guessing that the document differs.
-            try:
-                unchanged = _encode(field.decode(entity)) == value
-            except (AttributeError, ValueError, IndexError, KeyError):
+            # A field outside this buffer cannot be compared, and writing it
+            # would run past the end. Same reasoning as to_dict above.
+            if not field.fits(entity):
                 continue
-            if unchanged:
+            if _encode(field.decode(entity)) == value:
                 continue
             field.encode(entity,
                          bytes.fromhex(value) if field.kind == "span" else value)
             continue
         attr = TEXT_ATTRIBUTES.get(key)
-        if attr and hasattr(type(entity), attr):
-            try:
-                if getattr(entity, attr) == value:
-                    continue
-            except (AttributeError, ValueError, IndexError, KeyError):
-                pass
-            setattr(entity, attr, value)
+        if attr is None:
+            raise ValueError(
+                f"{type(entity).__name__} has no field {key!r}; writing it "
+                "would not change the underlying bytes")
+        if not hasattr(type(entity), attr):
+            raise ValueError(
+                f"{type(entity).__name__} does not store a {key}")
+        try:
+            if getattr(entity, attr) == value:
+                continue
+        except (AttributeError, ValueError, IndexError, KeyError):
+            pass
+        setattr(entity, attr, value)

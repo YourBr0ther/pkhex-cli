@@ -335,3 +335,15 @@ def test_a_relearn_move_still_means_scarlet_violet() -> None:
     core = bytearray(_za_candidate(656))
     write_u16(core, 0x82, 33)     # a relearn move
     assert _detect_89(bytes(core)) is PK9
+
+
+def test_unknown_field_in_a_document_is_rejected() -> None:
+    """An edit to a misspelled field used to be accepted and then dropped."""
+    pk = PK9()
+    pk.species = 25
+    document = serialize.to_dict(pk, include_raw=False)
+    assert serialize.from_dict(document).species == 25
+
+    document["fields"]["Speceis"] = 999
+    with pytest.raises(ValueError, match="Speceis"):
+        serialize.from_dict(document)
