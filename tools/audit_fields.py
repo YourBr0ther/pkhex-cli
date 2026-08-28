@@ -21,8 +21,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from pkhexpy import saves  # noqa: E402
-from pkhexpy.pkm import io as entity_io  # noqa: E402
+from pkhexpy import saves
+from pkhexpy.pkm import io as entity_io
 
 #: Upper bounds a field's value must respect, keyed by PKHeX property name.
 #: "max" may be a number or a callable taking the entity.

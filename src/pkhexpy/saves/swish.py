@@ -95,7 +95,7 @@ _STRUCT_FORMATS = {
 class SCXorShift32:
     """Keystream generator seeded from a block key, yielding one byte at a time."""
 
-    __slots__ = ("_state", "_counter")
+    __slots__ = ("_counter", "_state")
 
     def __init__(self, seed: int) -> None:
         state = seed & 0xFFFFFFFF

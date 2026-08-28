@@ -10,7 +10,7 @@ from __future__ import annotations
 from . import gen12, gen345, modern
 from .options import StringConverterOption
 
-__all__ = ["StringConverterOption", "get_string", "set_string", "gen12", "gen345", "modern"]
+__all__ = ["StringConverterOption", "gen12", "gen345", "get_string", "modern", "set_string"]
 
 
 def get_string(
