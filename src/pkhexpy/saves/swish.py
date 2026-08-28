@@ -123,9 +123,32 @@ class SCXorShift32:
     def next32(self) -> int:
         return self.next() | (self.next() << 8) | (self.next() << 16) | (self.next() << 24)
 
+    def keystream(self, length: int) -> bytes:
+        """Take ``length`` bytes of keystream.
+
+        The generator yields four bytes per state advance, so whole words come
+        out in one step once the current partial word is drained.
+        """
+        out = bytearray()
+        while self._counter and len(out) < length:
+            out.append(self.next())
+        remaining = length - len(out)
+        for _ in range(remaining // 4):
+            out += self._state.to_bytes(4, "little")
+            self._state = self._advance(self._state)
+        while len(out) < length:
+            out.append(self.next())
+        return bytes(out)
+
     def crypt(self, data: bytearray) -> None:
-        for i in range(len(data)):
-            data[i] ^= self.next()
+        """XOR a buffer with the keystream, in place."""
+        length = len(data)
+        if not length:
+            return
+        # One big-integer XOR beats a per-byte Python loop by a wide margin.
+        mixed = int.from_bytes(data, "little") ^ int.from_bytes(
+            self.keystream(length), "little")
+        data[:] = mixed.to_bytes(length, "little")
 
 
 @dataclass
@@ -168,13 +191,13 @@ class SCBlock:
 
 def crypt_static_xorpad(data: bytearray) -> None:
     """XOR the payload with the repeating 0x7F-byte pad, in place."""
-    pad = STATIC_XORPAD
-    size = len(pad)
-    for start in range(0, len(data), size):
-        chunk = data[start:start + size]
-        for i in range(len(chunk)):
-            chunk[i] ^= pad[i]
-        data[start:start + len(chunk)] = chunk
+    length = len(data)
+    if not length:
+        return
+    repeats = -(-length // len(STATIC_XORPAD))
+    pad = (STATIC_XORPAD * repeats)[:length]
+    mixed = int.from_bytes(data, "little") ^ int.from_bytes(pad, "little")
+    data[:] = mixed.to_bytes(length, "little")
 
 
 def compute_hash(payload: bytes) -> bytes:
@@ -245,8 +268,10 @@ def write_block(block: SCBlock, out: bytearray) -> None:
         write_i32(out, at, (len(block.data) // block.sub_type.size) ^ xk.next32())
         out.append(int(block.sub_type) ^ xk.next())
 
-    for byte in block.data:
-        out.append(byte ^ xk.next())
+    if block.data:
+        payload = bytearray(block.data)
+        xk.crypt(payload)
+        out += payload
 
 
 def decrypt(data: bytes) -> list[SCBlock]:
@@ -278,11 +303,18 @@ FNV_OFFSET_64 = 0xCBF29CE484222645
 
 
 def fnv1a_64(text: str | bytes) -> int:
-    """Block keys are the FNV-1a hash of the block's name in the game binary."""
-    values = text.encode("utf-16-le") if isinstance(text, str) else text
-    if isinstance(text, str):
-        values = [ord(c) for c in text]
+    """FNV-1a over a name's UTF-16 code units, or over raw bytes."""
+    values = [ord(c) for c in text] if isinstance(text, str) else text
     hash_value = FNV_OFFSET_64
     for value in values:
         hash_value = ((hash_value ^ value) * FNV_PRIME_64) & 0xFFFFFFFFFFFFFFFF
     return hash_value
+
+
+def block_key(name: str) -> int:
+    """The key a block is stored under, derived from its name in the game.
+
+    The hardcoded keys elsewhere in this package all come from this, so it is
+    how you look up a block the port does not already name.
+    """
+    return fnv1a_64(name) & 0xFFFFFFFF

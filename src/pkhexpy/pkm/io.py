@@ -11,7 +11,7 @@ from pathlib import Path
 
 from .. import crypto
 from ..binio import read_u16, read_u32
-from .formats import BY_NAME, PK1, PK2, PK4, PK5, PK6, PK7, PA8, PA9, PB7, PB8, PK8, PK9
+from .formats import BY_NAME, PK1, PK2, PK4, PK5, PK6, PK7, PA8, PA9, PB7, PK8, PK9
 from .formats import BK4, CK3, RK4, SK2, XK3, PK3
 from .formats import STRING_LENGTH_INTERNATIONAL, STRING_LENGTH_JAPANESE
 

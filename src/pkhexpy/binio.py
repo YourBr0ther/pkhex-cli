@@ -17,6 +17,13 @@ def _u(data: bytes, offset: int, size: int, big: bool = False) -> int:
 
 
 def _w(data: Buffer, offset: int, size: int, value: int, big: bool = False) -> None:
+    # A record has a fixed layout, so a write past the end is always a bug.
+    # Left unchecked, slice assignment would append and shift everything after.
+    if offset < 0 or offset + size > len(data):
+        raise IndexError(
+            f"write of {size} bytes at 0x{offset:X} runs past the end of a "
+            f"{len(data)}-byte buffer"
+        )
     data[offset:offset + size] = (value & ((1 << (size * 8)) - 1)).to_bytes(
         size, "big" if big else "little"
     )

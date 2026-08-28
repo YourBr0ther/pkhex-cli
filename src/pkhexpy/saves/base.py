@@ -110,14 +110,30 @@ class SaveFile:
 
     # --- string helpers ------------------------------------------------------
 
+    #: GameCube-era saves store text big-endian.
+    BIG_ENDIAN: bool = False
+
+    #: Set by formats that know their language up front rather than reading it
+    #: out of the save. Gen1 has no language byte to consult.
+    _japanese: bool | None = None
+
+    @property
+    def japanese(self) -> bool:
+        """Whether this save uses the Japanese glyph tables."""
+        if self._japanese is not None:
+            return self._japanese
+        return self.language == 1
+
     def decode_string(self, raw: bytes) -> str:
         return get_string(raw, self.STRING_GENERATION or self.GENERATION,
+                          jp=self.japanese, big_endian=self.BIG_ENDIAN,
                           language=self.language)
 
     def encode_string(self, buffer: bytearray, value: str, max_chars: int,
                       option: StringConverterOption | None = None) -> int:
         return set_string(buffer, value, max_chars,
                           self.STRING_GENERATION or self.GENERATION,
+                          jp=self.japanese, big_endian=self.BIG_ENDIAN,
                           language=self.language, option=option)
 
     # --- entity access -------------------------------------------------------
@@ -252,7 +268,13 @@ class SaveFile:
             document["boxes"] = boxes
 
         if include_raw:
-            document["raw_base64"] = base64.b64encode(self.to_bytes()).decode("ascii")
+            # to_bytes refreshes checksums. Snapshot first so exporting a save
+            # never silently repairs the copy in raw_base64 while the document
+            # above still reports it as invalid.
+            snapshot = bytes(self.data)
+            raw = self.to_bytes()
+            self.data[:] = snapshot
+            document["raw_base64"] = base64.b64encode(raw).decode("ascii")
         return document
 
     def apply_dict(self, document: dict[str, Any]) -> None:

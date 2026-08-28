@@ -265,3 +265,14 @@ def test_bdsp_round_trips_with_a_pokemon_in_it(entity_files: list[Path]) -> None
     assert reloaded.get_party_slot(0).species == source.species
     assert reloaded.get_box_slot(39, 29).species == source.species
     assert reloaded.to_bytes() == raw
+
+
+def test_block_key_derivation() -> None:
+    """Switch-era block keys are the low 32 bits of FNV-1a over the block name.
+
+    These three names are hardcoded in PKHeX's SAV9SV, which is what makes them
+    usable as a check on the hash rather than on this code.
+    """
+    assert swish.block_key("FSYS_CLUB_HUD_COACH_TEACHER_MATH") == 0xFA1952E8
+    assert swish.block_key("FSYS_CLUB_HUD_COACH_TEACHER_LANGUAGE") == 0xE3FFF180
+    assert swish.block_key("FEVT_SUB_014_KUI_01_RELEASE") == 0x12AC859B

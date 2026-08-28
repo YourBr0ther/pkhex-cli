@@ -47,11 +47,15 @@ def lookup(kind: str, index: int, language: str = DEFAULT_LANGUAGE) -> str | Non
 
 
 def item_name(index: int, generation: int, language: str = DEFAULT_LANGUAGE) -> str | None:
-    """Item names diverge before Gen5; pick the list that matches the format."""
+    """Item names diverge before Gen5; pick the list that matches the format.
+
+    An index the era's own list does not have is unknown, not an item from a
+    later game, so no fallback happens once a legacy list exists.
+    """
     if 1 <= generation <= 4:
-        legacy = lookup(f"items_gen{generation}", index, language)
-        if legacy is not None:
-            return legacy
+        legacy = name_list(f"items_gen{generation}", language)
+        if legacy:
+            return legacy[index] if 0 <= index < len(legacy) else None
     return lookup("items", index, language)
 
 

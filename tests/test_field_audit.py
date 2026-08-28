@@ -134,21 +134,25 @@ def test_core_fields_are_not_stuck_at_one_value(population) -> None:
 def test_level_agrees_with_experience(population) -> None:
     """Level is computed from EXP and the species' growth curve; the stored
     party level should agree with it."""
-    mismatches = []
+    mismatches: list[str] = []
+    compared = 0
     for cls, entities in population.items():
         for entity in entities:
             # Box slots are often stored-size and have no party stat block.
             stored = getattr(entity, "stat_level", 0)
             if not stored:
                 continue
+            compared += 1
             computed = entity.current_level
             if abs(stored - computed) > 1:
                 mismatches.append(f"{cls} {entity.species_name}: "
                                   f"stored {stored} vs computed {computed}")
+    assert compared > 500, f"only {compared} entities carried a stat block"
     # A hacked Pokemon can disagree; a wrong EXP offset makes most of them.
-    total = sum(len(v) for v in population.values())
-    assert len(mismatches) < total * 0.02, (
-        f"{len(mismatches)}/{total} levels disagree with EXP:\n  "
+    # The tolerance is a share of what was actually compared, not of the whole
+    # population, or a format-wide break would hide under the larger number.
+    assert len(mismatches) < compared * 0.02, (
+        f"{len(mismatches)}/{compared} levels disagree with EXP:\n  "
         + "\n  ".join(mismatches[:10]))
 
 

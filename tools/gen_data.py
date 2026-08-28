@@ -43,9 +43,11 @@ def read_lines(path: Path) -> list[str]:
     if not path.exists():
         return []
     raw = path.read_bytes()
-    for bom, encoding in ((b"\xff\xfe", "utf-16-le"), (b"\xfe\xff", "utf-16-be"),
+    for bom, encoding in ((b"\xff\xfe", "utf-16"), (b"\xfe\xff", "utf-16"),
                           (b"\xef\xbb\xbf", "utf-8-sig")):
         if raw.startswith(bom):
+            # "utf-16" consumes the byte-order mark; the explicit -le/-were
+            # variants leave it as a stray \ufeff on the first entry.
             return raw.decode(encoding).splitlines()
     return raw.decode("utf-8").splitlines()
 
@@ -114,8 +116,8 @@ def build_experience() -> None:
 
 # Per-game personal table: file stem -> (record size, growth offset, gender offset).
 PERSONAL = {
-    "rb":   (0x1C, 0x13, 0x0F), "y":    (0x1C, 0x13, 0x0F),
-    "gs":   (0x20, 0x16, 0x12), "c":    (0x20, 0x16, 0x12),
+    "rb":   (0x1C, 0x13, 0x00), "y":    (0x1C, 0x13, 0x00),
+    "gs":   (0x20, 0x16, 0x0D), "c":    (0x20, 0x16, 0x0D),
     "rs":   (0x1C, 0x13, 0x10), "e":    (0x1C, 0x13, 0x10),
     "fr":   (0x1C, 0x13, 0x10), "lg":   (0x1C, 0x13, 0x10),
     "dp":   (0x2C, 0x13, 0x10), "pt":   (0x2C, 0x13, 0x10),

@@ -202,24 +202,29 @@ class Entity(LayoutBase):
     def _read_name(self, span_field: str) -> str:
         return self.decode_string(getattr(self, span_field))
 
-    def _write_name(self, span_field: str, value: str, max_chars: int) -> None:
-        field = type(self)._fields[span_field]
-        buffer = bytearray(field.length)
-        self.encode_string(buffer, value, max_chars)
+    def encode_name(self, size: int, value: str, max_chars: int) -> bytearray:
+        """Encode a name into a ``size``-byte buffer, refusing to mangle it.
 
-        # Older games have per-language glyph tables, and a character missing
-        # from the one in use terminates the string where it appears. Left
-        # alone that turns into a silently truncated or empty name, so check
-        # the text survives the encoding before committing it.
+        Older games have per-language glyph tables, and a character missing from
+        the one in use terminates the string where it appears. Left alone that
+        turns into a silently truncated or empty name, so the text is decoded
+        back and compared before the caller commits it.
+        """
+        buffer = bytearray(size)
+        self.encode_string(buffer, value, max_chars)
         wanted = value[:max_chars]
         got = self.decode_string(bytes(buffer))
         if got != wanted:
-            language = self.name_language
             raise ValueError(
                 f"{wanted!r} cannot be written in this entity's encoding "
-                f"(generation {self.string_generation}, language {language}); "
-                f"it would be stored as {got!r}"
+                f"(generation {self.string_generation}, "
+                f"language {self.name_language}); it would be stored as {got!r}"
             )
+        return buffer
+
+    def _write_name(self, span_field: str, value: str, max_chars: int) -> None:
+        field = type(self)._fields[span_field]
+        buffer = self.encode_name(field.length, value, max_chars)
         self.data[field.offset:field.offset + field.length] = buffer
 
     @property

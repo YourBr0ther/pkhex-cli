@@ -171,7 +171,9 @@ def _try_get_index(table: tuple[str, ...], char: str) -> int | None:
     index = _index_of(table, char)
     if index == -1:
         if char in HIRAGANA_REMAP:
-            return _index_of(table, chr(ord(char) + 0x60))
+            # The dakuten-less form is what the table actually holds.
+            remapped = _index_of(table, chr(ord(char) + 0x60))
+            return remapped if remapped > 0 else None
         return None
     # Index 0 is the terminator; a user should never be able to enter it.
     return index if index != 0 else None

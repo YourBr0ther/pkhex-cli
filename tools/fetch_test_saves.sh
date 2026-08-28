@@ -24,6 +24,17 @@ mkdir -p "$DEST/rocs"
 python3 - "$DEST/rocs" <<'PY'
 import json, os, sys, urllib.parse, urllib.request
 dest = sys.argv[1]
+
+
+def download(url, out):
+    """Fetch to a temp name and rename, so an interrupted run leaves nothing.
+
+    A truncated file would otherwise be skipped by the exists() check forever,
+    quietly shrinking the corpus with no signal.
+    """
+    tmp = out + ".part"
+    urllib.request.urlretrieve(url, tmp)
+    os.replace(tmp, out)
 api = "https://api.github.com/repos/ReignOfComputer/RoCs-PC/git/trees/master?recursive=1"
 raw = "https://raw.githubusercontent.com/ReignOfComputer/RoCs-PC/master/"
 for entry in json.load(urllib.request.urlopen(api))["tree"]:
@@ -36,7 +47,7 @@ for entry in json.load(urllib.request.urlopen(api))["tree"]:
     out = os.path.join(dest, name)
     if os.path.exists(out):
         continue
-    urllib.request.urlretrieve(raw + urllib.parse.quote(path), out)
+    download(raw + urllib.parse.quote(path), out)
     print("  ", name)
 PY
 
@@ -45,6 +56,13 @@ mkdir -p "$DEST/switch"
 python3 - "$DEST/switch" <<'PY'
 import json, os, sys, urllib.parse, urllib.request, zipfile, hashlib
 dest = sys.argv[1]
+
+
+def download(url, out):
+    """Fetch to a temp name and rename; see the note in the previous block."""
+    tmp = out + ".part"
+    urllib.request.urlretrieve(url, tmp)
+    os.replace(tmp, out)
 api = "https://api.github.com/repos/Viren070/NX_Saves/git/trees/main?recursive=1"
 raw = "https://raw.githubusercontent.com/Viren070/NX_Saves/main/"
 want = ("Pokemon Scarlet [English Post Game]",
@@ -61,7 +79,7 @@ for entry in json.load(urllib.request.urlopen(api))["tree"]:
     if os.path.isdir(folder):
         continue
     archive = folder + ".zip"
-    urllib.request.urlretrieve(raw + urllib.parse.quote(path), archive)
+    download(raw + urllib.parse.quote(path), archive)
     with zipfile.ZipFile(archive) as zf:
         zf.extractall(folder)
     os.remove(archive)
@@ -73,6 +91,15 @@ mkdir -p "$DEST/shretro"
 python3 - "$DEST/shretro" <<'PY'
 import json, os, sys, urllib.parse, urllib.request
 dest = sys.argv[1]
+
+
+def download(url, out):
+    """Fetch to a temp name and rename; see the note in the first block."""
+    tmp = out + ".part"
+    urllib.request.urlretrieve(url, tmp)
+    os.replace(tmp, out)
+
+
 api = "https://api.github.com/repos/SHRetro/Pokemon-Home-and-Save-File-Backups/git/trees/main?recursive=1"
 raw = "https://raw.githubusercontent.com/SHRetro/Pokemon-Home-and-Save-File-Backups/main/"
 # One save per game; "backup" copies are duplicates of "main".
@@ -91,7 +118,7 @@ for entry in sorted(json.load(urllib.request.urlopen(api))["tree"], key=lambda e
     out = os.path.join(dest, name)
     if os.path.exists(out):
         continue
-    urllib.request.urlretrieve(raw + urllib.parse.quote(path), out)
+    download(raw + urllib.parse.quote(path), out)
     print("  ", name)
 PY
 

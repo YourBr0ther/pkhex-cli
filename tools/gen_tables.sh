@@ -39,6 +39,7 @@ emit() { python3 tools/extract_charmaps.py --source "$1" --table "$2" --pyname "
   emit $S/StringConverter3.cs G3_JP    G3_JP  "$G3"
   emit $S/StringConverter4Util.cs TableINT G4_INT "$G4"
   emit $S/StringConverter4Util.cs TableKOR G4_KOR "$G4"
+  emit $S/StringConverter7ZH.cs Table G7_ZH ""
   for t in 0 1 2 3 4 5 6 7 8 9 A B; do
     emit $S/StringConverter2KOR.cs "Table$t" "G2_KOR_$t" "$KOR"
   done

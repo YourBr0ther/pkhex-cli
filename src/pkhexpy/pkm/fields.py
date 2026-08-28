@@ -215,7 +215,12 @@ class Str(Field):
 
     def encode(self, obj: Any, value: Any) -> None:
         view = bytearray(self.length)
-        limit = self.max_chars if self.max_chars is not None else self.length
+        limit = self.max_chars
+        if limit is None:
+            # Leave room for the terminator, and account for encodings that
+            # spend two bytes per character.
+            width = obj.bytes_per_char
+            limit = max(0, (self.length // width) - 1)
         obj.encode_string(view, str(value), limit)
         obj.data[self.offset:self.offset + self.length] = view
 

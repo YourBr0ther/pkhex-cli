@@ -419,8 +419,6 @@ class _GBBase:
     SHINY_SHIFT = 0
     MAX_IV = 15
     MAX_EV = 65535
-    MAX_STRING_LENGTH_NICKNAME = 10
-    MAX_STRING_LENGTH_TRAINER = 7
 
     #: Slot marker a Gen2 list uses in place of the species id for an egg.
     SLOT_EGG = 0xFD
@@ -435,6 +433,20 @@ class _GBBase:
         # Gen1/2 record the egg state in the list slot marker, not the record.
         object.__setattr__(self, "is_egg", is_egg)
         super().__init__(data, japanese=japanese)
+        # The base class sizes to SIZE_PARTY, which stops short of the two name
+        # buffers this port appends. Without this a fresh record writes its
+        # nickname over the trainer name.
+        wanted = self.buffer_size(japanese)
+        if len(self.data) < wanted:
+            self.data.extend(bytes(wanted - len(self.data)))
+
+    @property
+    def MAX_STRING_LENGTH_NICKNAME(self) -> int:
+        return 5 if self.japanese else 10
+
+    @property
+    def MAX_STRING_LENGTH_TRAINER(self) -> int:
+        return 5 if self.japanese else 7
 
     def clone(self):
         return type(self)(bytes(self.data), japanese=self.japanese, is_egg=self.is_egg)
@@ -462,8 +474,8 @@ class _GBBase:
 
     @original_trainer_name.setter
     def original_trainer_name(self, value: str) -> None:
-        buffer = bytearray(self.string_length)
-        self.encode_string(buffer, value, self.MAX_STRING_LENGTH_TRAINER)
+        buffer = self.encode_name(self.string_length, value,
+                                  self.MAX_STRING_LENGTH_TRAINER)
         self.data[self._string_slice(0)] = buffer
 
     @property
@@ -472,8 +484,8 @@ class _GBBase:
 
     @nickname.setter
     def nickname(self, value: str) -> None:
-        buffer = bytearray(self.string_length)
-        self.encode_string(buffer, value, self.MAX_STRING_LENGTH_NICKNAME)
+        buffer = self.encode_name(self.string_length, value,
+                                  self.MAX_STRING_LENGTH_NICKNAME)
         self.data[self._string_slice(1)] = buffer
 
     # Gen1/2 pack four 4-bit DVs into one big-endian word.

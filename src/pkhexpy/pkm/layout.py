@@ -99,6 +99,13 @@ class LayoutBase:
         return self.STRING_GENERATION or self.FORMAT
 
     @property
+    def bytes_per_char(self) -> int:
+        """Width of one character in this format's text encoding."""
+        if self.BIG_ENDIAN:
+            return 2                    # the GameCube formats are UTF-16BE
+        return 1 if self.string_generation <= 3 else 2
+
+    @property
     def string_language(self) -> int:
         """Language id used to pick a per-language glyph table.
 

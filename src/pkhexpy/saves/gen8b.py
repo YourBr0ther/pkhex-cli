@@ -11,7 +11,7 @@ import hashlib
 
 from ..binio import read_u16, read_u32
 from ..pkm.formats import PB8
-from .base import SaveFile, fit
+from .base import SaveFile
 
 #: The four shipped save sizes, one per game revision.
 SIZES = (0xE9828, 0xEDC20, 0xEED8C, 0xEF0A4)

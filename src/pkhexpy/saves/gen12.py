@@ -88,7 +88,7 @@ class SAVGB(SaveFile):
 
     def __init__(self, data: bytes | bytearray, *, japanese: bool = False) -> None:
         super().__init__(data)
-        self.japanese = japanese
+        self._japanese = japanese
         self.string_length = (STRING_LENGTH_JAPANESE if japanese
                               else STRING_LENGTH_INTERNATIONAL)
         self.BOX_COUNT = self.BOX_COUNTS[0 if japanese else 1]
@@ -133,23 +133,79 @@ class SAVGB(SaveFile):
                              is_egg=marker == self.ENTITY.SLOT_EGG)
         return entity if entity.species else None
 
-    def _pack(self, start: int, capacity: int, slot_size: int, index: int, entity) -> None:
+    #: Marker for a slot that holds nothing.
+    SLOT_EMPTY = 0xFF
+
+    def _slot_regions(self, start: int, capacity: int, slot_size: int,
+                      index: int) -> tuple[int, int, int]:
+        """Byte offsets of one slot's body, trainer name, and nickname."""
         base = start + 1 + (capacity + 1)
-        body = base + slot_size * index
         names = base + slot_size * capacity
-        ot = names + self.string_length * index
-        nick = names + self.string_length * capacity + self.string_length * index
+        return (base + slot_size * index,
+                names + self.string_length * index,
+                names + self.string_length * capacity + self.string_length * index)
+
+    def _pack(self, start: int, capacity: int, slot_size: int, index: int, entity) -> None:
+        body, ot, nick = self._slot_regions(start, capacity, slot_size, index)
 
         if entity is None:
             self.data[body:body + slot_size] = bytes(slot_size)
-            return
-        raw = bytes(entity.data)
-        self.data[body:body + slot_size] = raw[:slot_size].ljust(slot_size, b"\0")
-        self.data[start + 1 + index] = (self.ENTITY.SLOT_EGG if entity.is_egg
-                                        else entity.species_internal)
-        offset = entity.SIZE_PARTY
-        self.data[ot:ot + self.string_length] = raw[offset:offset + self.string_length]
-        self.data[nick:nick + self.string_length] = raw[offset + self.string_length:]
+            self.data[ot:ot + self.string_length] = bytes(self.string_length)
+            self.data[nick:nick + self.string_length] = bytes(self.string_length)
+            self.data[start + 1 + index] = self.SLOT_EMPTY
+        else:
+            raw = bytes(entity.data)
+            self.data[body:body + slot_size] = raw[:slot_size].ljust(slot_size, b"\0")
+            self.data[start + 1 + index] = (self.ENTITY.SLOT_EGG if entity.is_egg
+                                            else entity.species_internal)
+            offset = entity.SIZE_PARTY
+            self.data[ot:ot + self.string_length] = raw[offset:offset + self.string_length]
+            self.data[nick:nick + self.string_length] = raw[offset + self.string_length:]
+
+        self._rebuild_list(start, capacity, slot_size)
+
+    def _rebuild_list(self, start: int, capacity: int, slot_size: int) -> None:
+        """Restore the list invariant the games and the format detector rely on.
+
+        Occupied slots sit at the front, every marker after them reads 0xFF, and
+        the leading byte is the occupied count. Detection reads the terminator
+        at ``1 + count``, so a list left with a gap stops being recognized as a
+        save at all.
+
+        Slot bodies are only moved when a write actually left a gap. Real saves
+        keep leftover data in unused slots, and rewriting those would change
+        bytes the caller never touched.
+        """
+        markers = [self.data[start + 1 + i] for i in range(capacity)]
+        present = [i for i, m in enumerate(markers) if m not in (0, self.SLOT_EMPTY)]
+
+        if present and present != list(range(len(present))):
+            # A gap would leave the entity unreachable, so close it up.
+            moved = []
+            for index in present:
+                body, ot, nick = self._slot_regions(start, capacity, slot_size, index)
+                moved.append((
+                    markers[index],
+                    bytes(self.data[body:body + slot_size]),
+                    bytes(self.data[ot:ot + self.string_length]),
+                    bytes(self.data[nick:nick + self.string_length]),
+                ))
+            for index, (marker, body_bytes, ot_bytes, nick_bytes) in enumerate(moved):
+                body, ot, nick = self._slot_regions(start, capacity, slot_size, index)
+                self.data[start + 1 + index] = marker
+                self.data[body:body + slot_size] = body_bytes
+                self.data[ot:ot + self.string_length] = ot_bytes
+                self.data[nick:nick + self.string_length] = nick_bytes
+            count = len(moved)
+        else:
+            count = len(present)
+
+        # Detection reads the count byte and the terminator immediately after
+        # the occupied markers. Markers past that point are left alone: real
+        # saves use both 0x00 and 0xFF there, and rewriting them would change
+        # bytes in a file the caller only read.
+        self.data[start] = count
+        self.data[start + 1 + count] = self.SLOT_EMPTY
 
     # --- storage -------------------------------------------------------------
 

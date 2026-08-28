@@ -17,47 +17,60 @@ import pytest
 from pkhexpy import saves
 
 
-def _load(paths: list[Path]):
-    """Parse every file the detector recognizes, skipping the rest."""
-    for path in paths:
+@pytest.fixture(scope="module")
+def parsed(real_saves: list[Path]) -> list[tuple[Path, bytes, object]]:
+    """Every recognized save, parsed once and shared across the module.
+
+    Re-parsing 40 MB per test dominated the suite runtime.
+    """
+    out = []
+    for path in real_saves:
         raw = path.read_bytes()
         try:
-            yield path, raw, saves.from_bytes(raw)
+            out.append((path, raw, saves.from_bytes(raw)))
         except saves.SaveFormatError:
             continue
+    if not out:
+        pytest.fail("the corpus is present but nothing in it parsed as a save")
+    return out
 
 
-def test_corpus_covers_many_games(real_saves: list[Path]) -> None:
-    games = collections.Counter(sav.GAME for _, _, sav in _load(real_saves))
+def test_corpus_covers_many_games(parsed) -> None:
+    games = collections.Counter(sav.GAME for _, _, sav in parsed)
     assert len(games) >= 8, f"expected a broad corpus, got {dict(games)}"
 
 
-def test_corpus_reaches_every_generation(real_saves: list[Path]) -> None:
-    generations = {sav.GENERATION for _, _, sav in _load(real_saves)}
+def test_corpus_reaches_every_generation(parsed) -> None:
+    generations = {sav.GENERATION for _, _, sav in parsed}
     missing = set(range(1, 10)) - generations
     assert not missing, f"no real save covering generation(s) {sorted(missing)}"
 
 
-def test_every_recognized_save_round_trips(real_saves: list[Path]) -> None:
+def test_every_recognized_save_round_trips(parsed) -> None:
     checked = 0
-    for path, raw, sav in _load(real_saves):
+    for path, raw, sav in parsed:
         assert sav.to_bytes() == raw, f"{path.name} ({sav.GAME}) changed on write"
         checked += 1
     assert checked >= 10
 
 
-def test_json_round_trip(real_saves: list[Path]) -> None:
-    for path, raw, sav in _load(real_saves):
+def test_json_round_trip(parsed) -> None:
+    checked = 0
+    for path, raw, sav in parsed:
         document = json.loads(json.dumps(sav.to_dict(include_raw=True),
                                          ensure_ascii=False))
         rebuilt = saves.from_bytes(base64.b64decode(document["raw_base64"]))
         rebuilt.apply_dict(document)
         assert rebuilt.to_bytes() == raw, f"{path.name} ({sav.GAME}) failed via JSON"
+        checked += 1
+    # Without this the test passes vacuously if detection stops recognizing
+    # anything, since the loop body would never run.
+    assert checked >= 10
 
 
-def test_stored_pokemon_are_sane(real_saves: list[Path]) -> None:
+def test_stored_pokemon_are_sane(parsed) -> None:
     total = 0
-    for path, _, sav in _load(real_saves):
+    for path, _, sav in parsed:
         for box, slot, entity in sav.iter_boxes():
             assert entity.checksum_valid, f"{path.name} box {box} slot {slot}"
             assert 0 < entity.species <= 1025, f"{path.name} box {box} slot {slot}"
@@ -70,8 +83,9 @@ def test_stored_pokemon_are_sane(real_saves: list[Path]) -> None:
     assert total > 1000, f"expected a large corpus, read {total}"
 
 
-def test_trainer_details_are_plausible(real_saves: list[Path]) -> None:
-    for path, _, sav in _load(real_saves):
+def test_trainer_details_are_plausible(parsed) -> None:
+    checked = 0
+    for path, _, sav in parsed:
         assert sav.checksums_valid, f"{path.name} ({sav.GAME}) has bad checksums"
         assert 0 <= sav.tid16 <= 0xFFFF
         if sav.money is not None:
@@ -82,6 +96,8 @@ def test_trainer_details_are_plausible(real_saves: list[Path]) -> None:
             assert 0 <= hours <= 9999, f"{path.name} play time {played}"
             assert 0 <= minutes < 60 or minutes == 0
             assert 0 <= seconds < 60 or seconds == 0
+        checked += 1
+    assert checked >= 10
 
 
 def _encodable_name(entity) -> str:
@@ -99,9 +115,9 @@ def _encodable_name(entity) -> str:
     return ""
 
 
-def test_editing_touches_only_the_edited_slot(real_saves: list[Path]) -> None:
+def test_editing_touches_only_the_edited_slot(parsed) -> None:
     checked = 0
-    for path, raw, sav in _load(real_saves):
+    for path, raw, sav in parsed:
         boxed = next(iter(sav.iter_boxes()), None)
         if boxed is None:
             continue

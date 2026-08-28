@@ -130,7 +130,11 @@ def to_dict(entity, *, include_raw: bool = True,
     if include_derived:
         document["derived"] = _derived(entity)
     if include_raw:
-        document["raw_base64"] = base64.b64encode(to_bytes(entity)).decode("ascii")
+        # to_bytes refreshes the checksum, so hand it a copy. Otherwise a record
+        # with a bad checksum would be silently repaired inside raw_base64 while
+        # the document above still reported it as invalid.
+        document["raw_base64"] = base64.b64encode(
+            to_bytes(entity.clone())).decode("ascii")
     return document
 
 

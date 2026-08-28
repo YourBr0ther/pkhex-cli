@@ -8,6 +8,7 @@ dropped that and use the real ♂/♀ codepoints, so no remapping happens there.
 from __future__ import annotations
 
 from ..binio import read_u16, write_u16
+from . import tables
 from .gen345 import is_full_width_string
 from .options import StringConverterOption
 
@@ -67,8 +68,52 @@ def get_string6(data: bytes) -> str:
     return "".join(normalize_gender_symbol(chr(v)) for v in _read_utf16(data))
 
 
-# Gen7 uses the same encoding as Gen6.
-get_string7 = get_string6
+# Gen7 mapped un-nicknamed Chinese species names into a private-use block so one
+# font could serve both Traditional and Simplified. The ranges below carve that
+# block up; later games use separate fonts and dropped the scheme.
+ZH_START = 0xE800
+ZH_SIMPLIFIED = (0xE800, 0xEB0E)
+ZH_TRADITIONAL = (0xEB0F, 0xEE1D)
+ZH_SIMPLIFIED_USUM = (0xEE1E, 0xEE21)
+ZH_TRADITIONAL_USUM = (0xEE22, 0xEE26)
+ZH_END = ZH_TRADITIONAL_USUM[1]
+
+
+def is_zh_private(value: int) -> bool:
+    return ZH_START <= value <= ZH_END
+
+
+def zh_to_unicode(value: int) -> str:
+    """Map a Gen7 private-use codepoint back to the character it displays."""
+    return tables.G7_ZH[value - ZH_START]
+
+
+def _zh_span(start: int, end: int) -> tuple[int, ...]:
+    return tuple(range(start - ZH_START, end - ZH_START + 1))
+
+
+def unicode_to_zh(char: str, traditional: bool) -> str:
+    """Map a character into Gen7's private-use block, if it lives there."""
+    if traditional:
+        order = (ZH_TRADITIONAL, ZH_TRADITIONAL_USUM)
+    else:
+        order = (ZH_SIMPLIFIED, ZH_SIMPLIFIED_USUM)
+    for start, end in order:
+        for index in _zh_span(start, end):
+            if tables.G7_ZH[index] == char:
+                return chr(ZH_START + index)
+    return char
+
+
+def get_string7(data: bytes) -> str:
+    """Gen7 text, with the private-use Chinese block mapped back to Unicode."""
+    out = []
+    for value in _read_utf16(data):
+        if is_zh_private(value):
+            out.append(zh_to_unicode(value))
+        else:
+            out.append(normalize_gender_symbol(chr(value)))
+    return "".join(out)
 
 
 def get_string8(data: bytes) -> str:
@@ -102,7 +147,23 @@ def set_string6(
     return _write_utf16(buffer, value)
 
 
-set_string7 = set_string6
+#: LanguageID values for Simplified and Traditional Chinese.
+CHINESE_SIMPLIFIED = 9
+CHINESE_TRADITIONAL = 10
+
+
+def set_string7(
+    buffer: bytearray,
+    value: str,
+    max_length: int,
+    language: int,
+    option: StringConverterOption = StringConverterOption.CLEAR_ZERO,
+) -> int:
+    """Gen7 text, mapping Chinese characters back into the private-use block."""
+    if language in (CHINESE_SIMPLIFIED, CHINESE_TRADITIONAL):
+        traditional = language == CHINESE_TRADITIONAL
+        value = "".join(unicode_to_zh(c, traditional) for c in value)
+    return set_string6(buffer, value, max_length, language, option)
 
 
 def set_string8(

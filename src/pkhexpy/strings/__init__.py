@@ -81,8 +81,11 @@ def set_string(
     if generation == 5:
         return gen345.set_string5(buffer, value, max_length, language,
                                   option or StringConverterOption.CLEAR_ZERO)
-    if generation in (6, 7):
+    if generation == 6:
         return modern.set_string6(buffer, value, max_length, language,
+                                  option or StringConverterOption.CLEAR_ZERO)
+    if generation == 7:
+        return modern.set_string7(buffer, value, max_length, language,
                                   option or StringConverterOption.CLEAR_ZERO)
     if generation in (8, 9):
         return modern.set_string8(buffer, value, max_length,
